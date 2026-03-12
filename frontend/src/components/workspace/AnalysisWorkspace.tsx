@@ -1,99 +1,34 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { AlertCircle, Dna, BarChart3, GitBranch } from 'lucide-react'
+import { AlertCircle, Dna, GitBranch, BarChart3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
-import { ScanLoader } from '@/components/ui/ScanLoader'
-import { SpeciesSearch } from './SpeciesSearch'
-import { SequencePanel } from './SequencePanel'
-import { QueryInput } from './QueryInput'
-import { BlastResults } from '@/components/results/BlastResults'
+import { useJobProgress } from '@/hooks/useJobProgress'
+import { CollectionBuilder } from './CollectionBuilder'
+import { JobProgress } from './JobProgress'
 import { Dendrogram } from '@/components/results/Dendrogram'
+import { ConservationMap } from '@/components/results/ConservationMap'
 import type {
-  SpeciesSearchResult,
-  SequenceListResponse,
-  BlastRequest,
-  BlastResponse,
-  TreeResponse,
-  TreeMode,
+  CollectionOut,
+  CollectionSpeciesOut,
+  JobStatusOut,
+  JobResultsOut,
 } from '@/lib/types'
 
-/* ─── Step Indicator ─── */
+/* ─── Result Tabs ─── */
 
-interface Step {
-  number: number
-  label: string
-  status: 'done' | 'active' | 'pending'
-}
+type ResultTab = 'tree' | 'conservation'
 
-function StepIndicator({ steps }: { steps: Step[] }) {
-  return (
-    <div className="flex items-center gap-0 px-2 py-3">
-      {steps.map((step, i) => (
-        <div key={step.number} className="flex items-center">
-          {/* Step circle + label */}
-          <div className="flex items-center gap-2">
-            <div
-              className={cn(
-                'w-6 h-6 rounded-full flex items-center justify-center font-mono text-[10px] font-bold border transition-colors',
-                step.status === 'done' && 'bg-green/20 border-green text-green',
-                step.status === 'active' && 'bg-cyan/20 border-cyan text-cyan glow-cyan',
-                step.status === 'pending' && 'bg-transparent border-border text-text-dim',
-              )}
-            >
-              {step.status === 'done' ? (
-                <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none">
-                  <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              ) : (
-                step.number
-              )}
-            </div>
-            <span
-              className={cn(
-                'font-mono text-[10px] font-semibold uppercase tracking-wider',
-                step.status === 'done' && 'text-green',
-                step.status === 'active' && 'text-cyan',
-                step.status === 'pending' && 'text-text-dim',
-              )}
-            >
-              {step.label}
-            </span>
-          </div>
-
-          {/* Connector line */}
-          {i < steps.length - 1 && (
-            <div
-              className={cn(
-                'w-8 h-px mx-2',
-                step.status === 'done' ? 'bg-green/40' : 'bg-border',
-              )}
-            />
-          )}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-/* ─── Tab Bar ─── */
-
-type Tab = 'blast' | 'tree'
-
-function TabBar({
+function ResultTabBar({
   activeTab,
   onTabChange,
-  hasResults,
 }: {
-  activeTab: Tab
-  onTabChange: (tab: Tab) => void
-  hasResults: boolean
+  activeTab: ResultTab
+  onTabChange: (tab: ResultTab) => void
 }) {
-  if (!hasResults) return null
-
-  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: 'blast', label: 'BLAST Results', icon: <BarChart3 className="w-3.5 h-3.5" /> },
-    { id: 'tree', label: 'Phylogenetic Tree', icon: <GitBranch className="w-3.5 h-3.5" /> },
+  const tabs: { id: ResultTab; label: string; icon: React.ReactNode }[] = [
+    { id: 'tree', label: 'Árvore Filogenética', icon: <GitBranch className="w-3.5 h-3.5" /> },
+    { id: 'conservation', label: 'Regiões Conservadas', icon: <BarChart3 className="w-3.5 h-3.5" /> },
   ]
 
   return (
@@ -127,10 +62,10 @@ function EmptyState() {
         <Dna className="w-16 h-16 text-text-dim/30 mx-auto" strokeWidth={1} />
         <div className="space-y-2">
           <p className="font-mono text-lg text-text-dim">
-            Select a species to begin
+            Construa uma coleção para começar
           </p>
           <p className="font-mono text-xs text-text-dim/60">
-            Search for an organism, fetch sequences, and run BLAST analysis
+            Busque espécies, adicione sequências e inicie a análise comparativa
           </p>
         </div>
         <div className="font-mono text-[10px] text-text-dim/30 leading-relaxed whitespace-pre">
@@ -173,229 +108,138 @@ function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () =>
 
 /* ─── Main Workspace ─── */
 
-const panelVariants = {
-  hidden: { opacity: 0, y: 12 },
-  visible: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -8 },
-}
-
 export function AnalysisWorkspace() {
-  const [species, setSpecies] = useState<SpeciesSearchResult | null>(null)
-  const [sequences, setSequences] = useState<SequenceListResponse | null>(null)
-  const [blastResult, setBlastResult] = useState<BlastResponse | null>(null)
-  const [treeResult, setTreeResult] = useState<TreeResponse | null>(null)
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [isLoadingTree, setIsLoadingTree] = useState(false)
-  const [activeTab, setActiveTab] = useState<Tab>('blast')
+  const [collection, setCollection] = useState<CollectionOut | null>(null)
+  const [entries, setEntries] = useState<CollectionSpeciesOut[]>([])
+  const [job, setJob] = useState<JobStatusOut | null>(null)
+  const [jobResults, setJobResults] = useState<JobResultsOut | null>(null)
+  const [activeTab, setActiveTab] = useState<ResultTab>('tree')
   const [error, setError] = useState<string | null>(null)
 
-  // Track which tree mode was last fetched to avoid refetch
-  const [treeModeLoaded, setTreeModeLoaded] = useState<TreeMode | null>(null)
+  const jobProgress = useJobProgress(job?.id ?? null)
 
-  /* ─── Compute steps ─── */
-  const steps: Step[] = [
-    {
-      number: 1,
-      label: 'Species',
-      status: species ? 'done' : 'active',
-    },
-    {
-      number: 2,
-      label: 'Sequences',
-      status: sequences ? 'done' : species ? 'active' : 'pending',
-    },
-    {
-      number: 3,
-      label: 'Analysis',
-      status: blastResult ? 'done' : sequences ? 'active' : 'pending',
-    },
-  ]
+  // Fetch results when job completes
+  useEffect(() => {
+    if (!job) return
+    if (!jobProgress.isComplete) return
+    if (jobProgress.status === 'failed') return
+    if (jobResults?.id === job.id) return
 
-  /* ─── Handlers ─── */
+    api
+      .getJobResults(job.id)
+      .then((results) => setJobResults(results))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Falha ao buscar resultados'))
+  }, [job, jobProgress.isComplete, jobProgress.status, jobResults?.id])
 
-  const handleSpeciesSelect = useCallback((s: SpeciesSearchResult) => {
-    setSpecies(s)
-    setSequences(null)
-    setBlastResult(null)
-    setTreeResult(null)
-    setTreeModeLoaded(null)
-    setError(null)
-    setActiveTab('blast')
+  // Fetch partial results when preview_tree step completes
+  useEffect(() => {
+    if (!job) return
+    if (jobProgress.status !== 'full_tree' && jobProgress.status !== 'conservation') return
+    if (jobResults) return
+
+    api
+      .getJobResults(job.id)
+      .then((results) => setJobResults(results))
+      .catch(() => {
+        // Partial results may not be ready yet, ignore
+      })
+  }, [job, jobProgress.status, jobResults])
+
+  const handleCollectionCreated = useCallback((c: CollectionOut) => {
+    setCollection(c)
   }, [])
 
-  const handleSequencesFetched = useCallback((data: SequenceListResponse) => {
-    setSequences(data)
+  const handleEntryAdded = useCallback((entry: CollectionSpeciesOut) => {
+    setEntries((prev) => [...prev, entry])
   }, [])
 
-  const handleBlastSubmit = useCallback(async (req: BlastRequest) => {
-    setIsAnalyzing(true)
+  const handleEntryRemoved = useCallback((sequenceId: string) => {
+    setEntries((prev) => prev.filter((e) => e.sequence.id !== sequenceId))
+  }, [])
+
+  const handleStartAnalysis = useCallback(async () => {
+    if (!collection) return
     setError(null)
-    setBlastResult(null)
-    setTreeResult(null)
-    setTreeModeLoaded(null)
+    setJobResults(null)
 
     try {
-      const result = await api.runBlast(req)
-      setBlastResult(result)
-      setActiveTab('blast')
+      const newJob = await api.createJob(collection.id)
+      setJob(newJob)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'BLAST analysis failed')
-    } finally {
-      setIsAnalyzing(false)
+      setError(err instanceof Error ? err.message : 'Falha ao iniciar análise')
     }
-  }, [])
+  }, [collection])
 
-  const fetchTree = useCallback(async (analysisId: string, mode: TreeMode) => {
-    setIsLoadingTree(true)
-    setError(null)
+  const isAnalyzing = !!job && !jobProgress.isComplete
+  const hasResults = !!jobResults && jobProgress.isComplete && jobProgress.status !== 'failed'
+  const hasPartialResults = !!jobResults && !jobProgress.isComplete
+  const showProgress = isAnalyzing || (!!job && jobProgress.status === 'failed')
 
-    try {
-      const tree = await api.getTree({ analysis_id: analysisId, mode })
-      setTreeResult(tree)
-      setTreeModeLoaded(mode)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to build phylogenetic tree')
-    } finally {
-      setIsLoadingTree(false)
-    }
-  }, [])
-
-  const handleTabChange = useCallback(
-    (tab: Tab) => {
-      setActiveTab(tab)
-
-      // Fetch tree on first switch to tree tab
-      if (tab === 'tree' && blastResult && !treeResult && !isLoadingTree) {
-        fetchTree(blastResult.id, 'query_vs_all')
-      }
-    },
-    [blastResult, treeResult, isLoadingTree, fetchTree],
-  )
-
-  const handleTreeModeChange = useCallback(
-    (mode: TreeMode) => {
-      if (!blastResult) return
-      if (mode === treeModeLoaded) return
-      fetchTree(blastResult.id, mode)
-    },
-    [blastResult, treeModeLoaded, fetchTree],
-  )
-
-  /* ─── Render ─── */
+  // Determine which newick to display
+  const displayNewick = jobResults?.tree ?? jobResults?.preview_tree ?? null
+  const isPreviewTree = !jobResults?.tree && !!jobResults?.preview_tree
+  const treeModel = jobResults?.tree_model ?? undefined
 
   return (
     <div className="flex-1 flex overflow-hidden">
       {/* ─── Left Panel ─── */}
-      <div className="w-[420px] shrink-0 border-r border-border flex flex-col overflow-y-auto">
-        {/* Step indicator */}
-        <div className="border-b border-border">
-          <StepIndicator steps={steps} />
-        </div>
-
-        {/* Species search */}
-        <div className="p-4 border-b border-border">
-          <label className="block font-mono text-[10px] text-text-dim uppercase tracking-wider mb-2">
-            01 // Species
-          </label>
-          <SpeciesSearch onSelect={handleSpeciesSelect} />
-        </div>
-
-        {/* Sequence panel */}
-        <AnimatePresence>
-          {species && (
-            <motion.div
-              key="seq-panel"
-              variants={panelVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              transition={{ duration: 0.3 }}
-              className="p-4 border-b border-border"
-            >
-              <label className="block font-mono text-[10px] text-text-dim uppercase tracking-wider mb-2">
-                02 // Sequences
-              </label>
-              <SequencePanel
-                species={species}
-                onSequencesFetched={handleSequencesFetched}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Query input */}
-        <AnimatePresence>
-          {species && sequences && (
-            <motion.div
-              key="query-panel"
-              variants={panelVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              transition={{ duration: 0.3, delay: 0.1 }}
-              className="p-4"
-            >
-              <label className="block font-mono text-[10px] text-text-dim uppercase tracking-wider mb-2">
-                03 // Analysis
-              </label>
-              <QueryInput
-                species={species}
-                sequences={sequences}
-                onSubmit={handleBlastSubmit}
-                isLoading={isAnalyzing}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
+      <div className="w-[420px] shrink-0 border-r border-border flex flex-col overflow-hidden">
+        <CollectionBuilder
+          collection={collection}
+          entries={entries}
+          onCollectionCreated={handleCollectionCreated}
+          onEntryAdded={handleEntryAdded}
+          onEntryRemoved={handleEntryRemoved}
+          onStartAnalysis={handleStartAnalysis}
+          isAnalyzing={isAnalyzing}
+        />
       </div>
 
       {/* ─── Right Panel ─── */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Error banner */}
         <AnimatePresence>
-          {error && (
-            <ErrorBanner message={error} onDismiss={() => setError(null)} />
-          )}
+          {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
         </AnimatePresence>
 
-        {/* No results yet */}
-        {!blastResult && !isAnalyzing && <EmptyState />}
+        {/* Empty state */}
+        {!job && !hasResults && <EmptyState />}
 
-        {/* Loading state */}
-        {isAnalyzing && (
+        {/* Job progress */}
+        {showProgress && (
           <div className="flex-1 flex items-center justify-center p-8">
-            <div className="w-full max-w-md">
-              <ScanLoader message="Running BLAST analysis..." />
+            <JobProgress
+              status={jobProgress.status}
+              progressPct={jobProgress.progressPct}
+              progressMsg={jobProgress.progressMsg}
+              error={jobProgress.error}
+              isComplete={jobProgress.isComplete}
+            />
+          </div>
+        )}
+
+        {/* Partial results: show preview tree during analysis */}
+        {hasPartialResults && displayNewick && (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="border-b border-border px-4 py-2">
+              <span className="font-mono text-xs text-amber font-semibold uppercase tracking-wider">
+                Resultados Parciais
+              </span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              <Dendrogram newick={displayNewick} treeModel={treeModel} isPreview={true} />
             </div>
           </div>
         )}
 
-        {/* Results */}
-        {blastResult && !isAnalyzing && (
+        {/* Final results */}
+        {hasResults && (
           <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Tab bar */}
-            <TabBar
-              activeTab={activeTab}
-              onTabChange={handleTabChange}
-              hasResults={!!blastResult}
-            />
+            <ResultTabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
-            {/* Tab content */}
             <div className="flex-1 overflow-y-auto p-4">
               <AnimatePresence mode="wait">
-                {activeTab === 'blast' && (
-                  <motion.div
-                    key="blast-tab"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <BlastResults result={blastResult} />
-                  </motion.div>
-                )}
-
-                {activeTab === 'tree' && (
+                {activeTab === 'tree' && displayNewick && (
                   <motion.div
                     key="tree-tab"
                     initial={{ opacity: 0 }}
@@ -403,29 +247,51 @@ export function AnalysisWorkspace() {
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.2 }}
                   >
-                    {isLoadingTree && (
-                      <div className="flex items-center justify-center py-12">
-                        <div className="w-full max-w-md">
-                          <ScanLoader message="Building phylogenetic tree..." />
-                        </div>
-                      </div>
-                    )}
+                    <Dendrogram
+                      newick={displayNewick}
+                      treeModel={treeModel}
+                      isPreview={isPreviewTree}
+                    />
+                  </motion.div>
+                )}
 
-                    {!isLoadingTree && treeResult && (
-                      <Dendrogram
-                        data={treeResult}
-                        queryLabel="Query"
-                        onModeChange={handleTreeModeChange}
-                      />
-                    )}
+                {activeTab === 'tree' && !displayNewick && (
+                  <motion.div
+                    key="tree-empty"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex items-center justify-center py-12"
+                  >
+                    <p className="font-mono text-sm text-text-dim">
+                      Dados da árvore não disponíveis
+                    </p>
+                  </motion.div>
+                )}
 
-                    {!isLoadingTree && !treeResult && (
-                      <div className="flex items-center justify-center py-12">
-                        <p className="font-mono text-sm text-text-dim">
-                          No tree data available
-                        </p>
-                      </div>
-                    )}
+                {activeTab === 'conservation' && jobResults.conservation && (
+                  <motion.div
+                    key="conservation-tab"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <ConservationMap data={jobResults.conservation} />
+                  </motion.div>
+                )}
+
+                {activeTab === 'conservation' && !jobResults.conservation && (
+                  <motion.div
+                    key="conservation-empty"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex items-center justify-center py-12"
+                  >
+                    <p className="font-mono text-sm text-text-dim">
+                      Dados de conservação não disponíveis
+                    </p>
                   </motion.div>
                 )}
               </AnimatePresence>

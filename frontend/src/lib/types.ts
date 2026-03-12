@@ -1,7 +1,6 @@
 export type SeqType = 'dna' | 'rna' | 'protein'
 export type SeqSource = 'ncbi' | 'manual'
-export type BlastProgram = 'blastn' | 'blastp' | 'blastx' | 'tblastn' | 'tblastx'
-export type TreeMode = 'query_vs_all' | 'all_vs_all'
+export type JobStatus = 'queued' | 'aligning' | 'preview_tree' | 'full_tree' | 'conservation' | 'done' | 'failed'
 
 export interface SpeciesSearchResult {
   taxon_id: number
@@ -36,44 +35,62 @@ export interface SequenceListResponse {
   from_cache: boolean
 }
 
-export interface BlastRequest {
-  query_sequence: string
-  seq_type: SeqType
-  species_taxon_id: number
-  program: BlastProgram
-  max_results: number
-}
-
-export interface BlastHit {
-  accession: string
-  title: string
-  score: number
-  evalue: number
-  identity_pct: number
-  coverage: number
-  query_start: number
-  query_end: number
-  hit_start: number
-  hit_end: number
-  query_aligned: string
-  match_line: string
-  hit_aligned: string
-}
-
-export interface BlastResponse {
+export interface CollectionOut {
   id: string
-  query_length: number
-  hits: BlastHit[]
-  total_hits: number
+  name: string
+  seq_type: SeqType
+  species_count: number
+  created_at: string
 }
 
-export interface TreeRequest {
-  analysis_id: string
-  mode: TreeMode
+export interface CollectionSpeciesOut {
+  species: SpeciesOut
+  sequence: SequenceOut
 }
 
-export interface TreeResponse {
-  newick: string
-  labels: string[]
-  distance_matrix: number[][]
+export interface CollectionDetailOut {
+  id: string
+  name: string
+  seq_type: SeqType
+  created_at: string
+  entries: CollectionSpeciesOut[]
+}
+
+export interface JobStatusOut {
+  id: string
+  collection_id: string
+  status: JobStatus
+  progress_pct: number
+  progress_msg: string | null
+  error_msg: string | null
+  created_at: string
+  finished_at: string | null
+}
+
+export interface ConservedRegion {
+  start: number
+  end: number
+  length: number
+  avg_identity: number
+}
+
+export interface ConservationData {
+  position_identity: number[]
+  regions: ConservedRegion[]
+  total_positions: number
+  total_conserved: number
+  conservation_pct: number
+  threshold: number
+  n_sequences: number
+}
+
+export interface JobResultsOut {
+  id: string
+  status: JobStatus
+  alignment: string | null
+  preview_tree: string | null
+  tree: string | null
+  tree_model: string | null
+  bootstrap_data: Record<string, unknown> | null
+  conservation: ConservationData | null
 }

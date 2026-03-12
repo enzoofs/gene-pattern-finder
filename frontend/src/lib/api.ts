@@ -2,10 +2,11 @@ import type {
   SpeciesSearchResult,
   SequenceListResponse,
   SeqType,
-  BlastRequest,
-  BlastResponse,
-  TreeRequest,
-  TreeResponse,
+  CollectionOut,
+  CollectionDetailOut,
+  CollectionSpeciesOut,
+  JobStatusOut,
+  JobResultsOut,
 } from './types'
 
 const BASE = '/api'
@@ -35,21 +36,50 @@ export const api = {
     )
   },
 
-  runBlast(data: BlastRequest) {
-    return request<BlastResponse>('/analysis/blast', {
+  createCollection(name: string, seq_type: SeqType) {
+    return request<CollectionOut>('/collections', {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify({ name, seq_type }),
     })
   },
 
-  getTree(data: TreeRequest) {
-    return request<TreeResponse>('/analysis/tree', {
+  getCollection(id: string) {
+    return request<CollectionDetailOut>(`/collections/${id}`)
+  },
+
+  addToCollection(collectionId: string, speciesTaxonId: number, sequenceId: string) {
+    return request<CollectionSpeciesOut>(`/collections/${collectionId}/species`, {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify({ species_taxon_id: speciesTaxonId, sequence_id: sequenceId }),
     })
   },
 
-  getAnalysis(id: string) {
-    return request<Record<string, unknown>>(`/analysis/${id}`)
+  removeFromCollection(collectionId: string, sequenceId: string) {
+    return request<unknown>(`/collections/${collectionId}/species/${sequenceId}`, { method: 'DELETE' })
   },
+
+  createJob(collectionId: string) {
+    return request<JobStatusOut>('/jobs', {
+      method: 'POST',
+      body: JSON.stringify({ collection_id: collectionId }),
+    })
+  },
+
+  getJobStatus(jobId: string) {
+    return request<JobStatusOut>(`/jobs/${jobId}`)
+  },
+
+  getJobResults(jobId: string) {
+    return request<JobResultsOut>(`/jobs/${jobId}/results`)
+  },
+}
+
+export function connectJobProgress(
+  jobId: string,
+  onMessage: (data: { pct: number; msg: string }) => void,
+): WebSocket {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const ws = new WebSocket(`${protocol}//${window.location.host}/ws/jobs/${jobId}`)
+  ws.onmessage = (e) => onMessage(JSON.parse(e.data))
+  return ws
 }

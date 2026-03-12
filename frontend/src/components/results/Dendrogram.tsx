@@ -1,12 +1,11 @@
-import { useRef, useEffect, useState, useCallback } from 'react'
+import { useRef, useEffect } from 'react'
 import * as d3 from 'd3'
 import { cn } from '@/lib/utils'
-import type { TreeResponse, TreeMode } from '@/lib/types'
 
 interface DendrogramProps {
-  data: TreeResponse
-  queryLabel?: string
-  onModeChange?: (mode: TreeMode) => void
+  newick: string
+  treeModel?: string
+  isPreview?: boolean
 }
 
 /* ─── Newick Parser ─── */
@@ -64,25 +63,11 @@ function parseNewick(nwk: string): NewickNode {
 
 /* ─── Component ─── */
 
-const MODES: { value: TreeMode; label: string }[] = [
-  { value: 'query_vs_all', label: 'Query vs All' },
-  { value: 'all_vs_all', label: 'Full Phylogeny' },
-]
-
 const MARGIN = { top: 20, right: 160, bottom: 20, left: 20 }
 
-export function Dendrogram({ data, queryLabel, onModeChange }: DendrogramProps) {
+export function Dendrogram({ newick, treeModel, isPreview }: DendrogramProps) {
   const svgRef = useRef<SVGSVGElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const [mode, setMode] = useState<TreeMode>('query_vs_all')
-
-  const handleModeChange = useCallback(
-    (m: TreeMode) => {
-      setMode(m)
-      onModeChange?.(m)
-    },
-    [onModeChange],
-  )
 
   useEffect(() => {
     if (!svgRef.current || !containerRef.current) return
@@ -96,7 +81,7 @@ export function Dendrogram({ data, queryLabel, onModeChange }: DendrogramProps) 
     svg.attr('width', width).attr('height', height).attr('viewBox', `0 0 ${width} ${height}`)
 
     // Parse Newick
-    const rootData = parseNewick(data.newick)
+    const rootData = parseNewick(newick)
     const hierarchy = d3.hierarchy<NewickNode>(rootData, (d) => d.children)
 
     // Cluster layout — horizontal
@@ -148,7 +133,6 @@ export function Dendrogram({ data, queryLabel, onModeChange }: DendrogramProps) 
       .append('path')
       .attr('class', 'link')
       .attr('d', (d) => {
-        // Elbow connector: horizontal then vertical
         return `M${d.source.y},${d.source.x}H${d.target.y}V${d.target.x}`
       })
       .attr('fill', 'none')
@@ -178,23 +162,10 @@ export function Dendrogram({ data, queryLabel, onModeChange }: DendrogramProps) 
       .attr('class', 'node')
       .attr('cx', (d) => d.y)
       .attr('cy', (d) => d.x)
-      .attr('r', (d) => {
-        if (!d.children && queryLabel && d.data.name === queryLabel) return 5
-        return 3
-      })
-      .attr('fill', (d) => {
-        if (!d.children && queryLabel && d.data.name === queryLabel) return '#22D3EE'
-        return '#06B6D4'
-      })
-      .attr('stroke', (d) => {
-        if (!d.children && queryLabel && d.data.name === queryLabel) return '#22D3EE'
-        return 'none'
-      })
-      .attr('stroke-width', (d) => {
-        if (!d.children && queryLabel && d.data.name === queryLabel) return 3
-        return 0
-      })
-      .attr('stroke-opacity', 0.3)
+      .attr('r', 3)
+      .attr('fill', '#06B6D4')
+      .attr('stroke', 'none')
+      .attr('stroke-width', 0)
       .attr('opacity', 0)
 
     nodes
@@ -202,23 +173,6 @@ export function Dendrogram({ data, queryLabel, onModeChange }: DendrogramProps) 
       .delay(1000)
       .duration(400)
       .attr('opacity', 1)
-
-    // Query node glow filter
-    if (queryLabel) {
-      const defs = svg.append('defs')
-      const filter = defs.append('filter').attr('id', 'glow-query')
-      filter
-        .append('feGaussianBlur')
-        .attr('stdDeviation', '3')
-        .attr('result', 'coloredBlur')
-      const feMerge = filter.append('feMerge')
-      feMerge.append('feMergeNode').attr('in', 'coloredBlur')
-      feMerge.append('feMergeNode').attr('in', 'SourceGraphic')
-
-      g.selectAll<SVGCircleElement, d3.HierarchyPointNode<NewickNode>>('.node')
-        .filter((d) => !d.children && d.data.name === queryLabel)
-        .attr('filter', 'url(#glow-query)')
-    }
 
     // Leaf labels
     const labels = g
@@ -232,14 +186,8 @@ export function Dendrogram({ data, queryLabel, onModeChange }: DendrogramProps) 
       .attr('dy', '0.35em')
       .attr('font-family', "'IBM Plex Mono', monospace")
       .attr('font-size', '11px')
-      .attr('fill', (d) => {
-        if (queryLabel && d.data.name === queryLabel) return '#22D3EE'
-        return '#E2E8F0'
-      })
-      .attr('font-weight', (d) => {
-        if (queryLabel && d.data.name === queryLabel) return '600'
-        return '400'
-      })
+      .attr('fill', '#E2E8F0')
+      .attr('font-weight', '400')
       .text((d) => d.data.name)
       .attr('opacity', 0)
 
@@ -248,26 +196,29 @@ export function Dendrogram({ data, queryLabel, onModeChange }: DendrogramProps) 
       .delay(1200)
       .duration(400)
       .attr('opacity', 1)
-  }, [data, queryLabel])
+  }, [newick])
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Mode toggle */}
-      <div className="flex items-center gap-1">
-        {MODES.map((m) => (
-          <button
-            key={m.value}
-            onClick={() => handleModeChange(m.value)}
+      {/* Badges */}
+      <div className="flex items-center gap-2">
+        {isPreview !== undefined && (
+          <span
             className={cn(
-              'px-3 py-1.5 rounded font-mono text-xs font-semibold tracking-wider transition-colors cursor-pointer',
-              mode === m.value
-                ? 'bg-cyan text-deep-bg'
-                : 'bg-panel border border-border text-text-dim hover:text-text-muted hover:border-border-bright',
+              'px-2 py-0.5 rounded font-mono text-[10px] font-bold uppercase tracking-wider border',
+              isPreview
+                ? 'text-amber border-amber/30 bg-amber/10'
+                : 'text-green border-green/30 bg-green/10',
             )}
           >
-            {m.label}
-          </button>
-        ))}
+            {isPreview ? 'PREVIEW' : 'FINAL'}
+          </span>
+        )}
+        {treeModel && (
+          <span className="px-2 py-0.5 rounded font-mono text-[10px] text-text-muted border border-border bg-panel">
+            Modelo: {treeModel}
+          </span>
+        )}
       </div>
 
       {/* SVG container */}
