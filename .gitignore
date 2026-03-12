@@ -10,3 +10,4 @@ node_modules/
 .next/
 *.db
 /backend/alembic/versions/__pycache__/
+tools/

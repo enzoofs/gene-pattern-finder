@@ -5,8 +5,6 @@ class Settings(BaseSettings):
     database_url_sync: str = "postgresql+psycopg2://rainman:rainman_dev@localhost:5432/rainman"
     ncbi_email: str = "dev@timelabs.com"
     ncbi_api_key: str = ""
-    blast_bin_dir: str = ""
-    blast_tmp_dir: str = "/tmp/blast_tmp"
     redis_url: str = "redis://localhost:6379/0"
     mafft_bin: str = "mafft"
     fasttree_bin: str = "FastTree"
