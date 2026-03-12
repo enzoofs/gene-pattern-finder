@@ -161,6 +161,7 @@ export function AnalysisWorkspace() {
     if (!collection) return
     setError(null)
     setJobResults(null)
+    setJob(null)
 
     try {
       const newJob = await api.createJob(collection.id)
@@ -169,6 +170,13 @@ export function AnalysisWorkspace() {
       setError(err instanceof Error ? err.message : 'Falha ao iniciar análise')
     }
   }, [collection])
+
+  const handleRetry = useCallback(() => {
+    setJob(null)
+    setJobResults(null)
+    setError(null)
+    handleStartAnalysis()
+  }, [handleStartAnalysis])
 
   const isAnalyzing = !!job && !jobProgress.isComplete
   const hasResults = !!jobResults && jobProgress.isComplete && jobProgress.status !== 'failed'
@@ -214,6 +222,9 @@ export function AnalysisWorkspace() {
               progressMsg={jobProgress.progressMsg}
               error={jobProgress.error}
               isComplete={jobProgress.isComplete}
+              onRetry={handleRetry}
+              sequenceCount={entries.length}
+              totalLength={entries.reduce((sum, e) => sum + (e.sequence.length ?? 0), 0)}
             />
           </div>
         )}

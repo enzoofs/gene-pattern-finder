@@ -212,9 +212,8 @@ export function CollectionBuilder({
     setBatchItems(items)
     setIsBatchSearching(true)
 
-    // Search all in parallel, updating state as each completes
-    const promises = names.map(async (name, idx) => {
-      // Mark loading
+    // Search sequentially to respect NCBI rate limits
+    for (let idx = 0; idx < names.length; idx++) {
       setBatchItems((prev) => {
         const next = [...prev]
         next[idx] = { ...next[idx], status: 'loading' }
@@ -222,7 +221,7 @@ export function CollectionBuilder({
       })
 
       try {
-        const results = await api.searchSpecies(name)
+        const results = await api.searchSpecies(names[idx])
         setBatchItems((prev) => {
           const next = [...prev]
           next[idx] = {
@@ -243,9 +242,8 @@ export function CollectionBuilder({
           return next
         })
       }
-    })
+    }
 
-    await Promise.allSettled(promises)
     setIsBatchSearching(false)
   }, [batchInput])
 
@@ -534,7 +532,7 @@ export function CollectionBuilder({
             <div className="text-center space-y-2">
               <Dna className="w-8 h-8 text-text-dim/30 mx-auto" strokeWidth={1} />
               <p className="font-mono text-xs text-text-dim/60">
-                Adicione pelo menos 3 espécies para análise comparativa
+                Adicione pelo menos 4 espécies para análise comparativa
               </p>
             </div>
           </div>
@@ -573,16 +571,16 @@ export function CollectionBuilder({
           </div>
         )}
 
-        {entries.length < 3 && entries.length > 0 && (
+        {entries.length < 4 && entries.length > 0 && (
           <p className="font-mono text-[10px] text-amber mb-3">
-            Mínimo de 3 espécies necessário ({3 - entries.length} restante{3 - entries.length > 1 ? 's' : ''})
+            Mínimo de 4 espécies necessário ({4 - entries.length} restante{4 - entries.length > 1 ? 's' : ''})
           </p>
         )}
 
         <div className="mt-auto">
           <GlowButton
             onClick={onStartAnalysis}
-            disabled={entries.length < 3 || isAnalyzing}
+            disabled={entries.length < 4 || isAnalyzing}
             loading={isAnalyzing}
             className="w-full"
           >

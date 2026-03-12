@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from functools import partial
 from Bio import Entrez, SeqIO
 from io import StringIO
@@ -9,48 +10,53 @@ from app.models import SeqType
 logger = logging.getLogger(__name__)
 
 Entrez.email = settings.ncbi_email
-Entrez.timeout = 30  # 30s timeout for all NCBI requests
+Entrez.timeout = 30
 if settings.ncbi_api_key:
     Entrez.api_key = settings.ncbi_api_key
 
-
-def _run_sync(func, *args, **kwargs):
-    """Helper to run blocking Entrez calls."""
-    return func(*args, **kwargs)
+MAX_RETRIES = 3
+RETRY_DELAY = 2
 
 
 async def _to_thread(func, *args, **kwargs):
-    """Run a blocking function in a thread to avoid blocking the event loop."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, partial(func, *args, **kwargs))
 
 
 def _search_species_sync(query: str, max_results: int = 20) -> list[dict]:
-    if query.strip().isdigit():
-        handle = Entrez.efetch(db="taxonomy", id=query.strip(), retmode="xml")
-        records = Entrez.read(handle)
-        handle.close()
-    else:
-        handle = Entrez.esearch(db="taxonomy", term=query, retmax=max_results)
-        result = Entrez.read(handle)
-        handle.close()
+    for attempt in range(MAX_RETRIES):
+        try:
+            if query.strip().isdigit():
+                handle = Entrez.efetch(db="taxonomy", id=query.strip(), retmode="xml")
+                records = Entrez.read(handle)
+                handle.close()
+            else:
+                handle = Entrez.esearch(db="taxonomy", term=query, retmax=max_results)
+                result = Entrez.read(handle)
+                handle.close()
 
-        if not result["IdList"]:
-            return []
+                if not result["IdList"]:
+                    return []
 
-        handle = Entrez.efetch(db="taxonomy", id=",".join(result["IdList"]), retmode="xml")
-        records = Entrez.read(handle)
-        handle.close()
+                handle = Entrez.efetch(db="taxonomy", id=",".join(result["IdList"]), retmode="xml")
+                records = Entrez.read(handle)
+                handle.close()
 
-    return [
-        {
-            "taxon_id": int(rec["TaxId"]),
-            "name": rec["ScientificName"],
-            "rank": rec.get("Rank", "unknown"),
-            "lineage": rec.get("Lineage", ""),
-        }
-        for rec in records
-    ]
+            return [
+                {
+                    "taxon_id": int(rec["TaxId"]),
+                    "name": rec["ScientificName"],
+                    "rank": rec.get("Rank", "unknown"),
+                    "lineage": rec.get("Lineage", ""),
+                }
+                for rec in records
+            ]
+        except Exception as e:
+            logger.warning("NCBI species search attempt %d failed: %s", attempt + 1, e)
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_DELAY * (attempt + 1))
+            else:
+                raise
 
 
 async def search_species(query: str, max_results: int = 20) -> list[dict]:

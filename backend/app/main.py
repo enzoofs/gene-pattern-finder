@@ -14,7 +14,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Gene Pattern Finder",
     description="TimeLabs - Genetic Sequence Analysis Platform",
-    version="0.1.0",
+    version="0.2.2",
     lifespan=lifespan,
 )
 

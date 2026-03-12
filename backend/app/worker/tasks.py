@@ -52,9 +52,9 @@ def run_analysis(self, job_id: str):
         )
         links = db.execute(stmt).scalars().all()
 
-        if len(links) < 3:
-            _update_job(db, job_uuid, status=JobStatus.failed, error_msg="Need at least 3 sequences")
-            _publish_progress(job_uuid, -1, "Failed: Need at least 3 sequences")
+        if len(links) < 4:
+            _update_job(db, job_uuid, status=JobStatus.failed, error_msg="Need at least 4 sequences for bootstrap analysis")
+            _publish_progress(job_uuid, -1, "Failed: Need at least 4 sequences")
             return
 
         seq_ids = [link.sequence_id for link in links]

@@ -8,7 +8,7 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-SUBPROCESS_TIMEOUT = 600
+SUBPROCESS_TIMEOUT = 3600  # 1 hour — large alignments can be slow
 
 
 def _build_mafft_command(input_fasta: str) -> tuple[list[str], dict[str, str]]:

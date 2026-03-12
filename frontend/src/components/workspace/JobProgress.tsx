@@ -1,5 +1,6 @@
+import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { Check, AlertCircle } from 'lucide-react'
+import { Check, AlertCircle, RotateCcw, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ScanLoader } from '@/components/ui/ScanLoader'
 import type { JobStatus } from '@/lib/types'
@@ -10,6 +11,9 @@ interface JobProgressProps {
   progressMsg: string | null
   error: string | null
   isComplete: boolean
+  onRetry?: () => void
+  sequenceCount?: number
+  totalLength?: number
 }
 
 interface PipelineStep {
@@ -31,7 +35,6 @@ function getStepState(stepKey: JobStatus, currentStatus: JobStatus): 'done' | 'a
   const stepIdx = STATUS_ORDER.indexOf(stepKey)
   const currentIdx = STATUS_ORDER.indexOf(currentStatus)
   if (currentStatus === 'failed') {
-    // Mark everything up to the failed step as done, current as error
     return stepIdx < currentIdx ? 'done' : stepIdx === currentIdx ? 'active' : 'pending'
   }
   if (stepIdx < currentIdx) return 'done'
@@ -39,8 +42,39 @@ function getStepState(stepKey: JobStatus, currentStatus: JobStatus): 'done' | 'a
   return 'pending'
 }
 
-export function JobProgress({ status, progressPct, progressMsg, error, isComplete }: JobProgressProps) {
+function formatTime(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  return s > 0 ? `${m}min ${s}s` : `${m}min`
+}
+
+function ElapsedTimer() {
+  const [elapsed, setElapsed] = useState(0)
+  const startRef = useRef(Date.now())
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startRef.current) / 1000))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  return (
+    <div className="flex items-center gap-1.5 font-mono text-[10px] text-text-dim">
+      <Clock className="w-3 h-3" />
+      <span>Tempo decorrido: {formatTime(elapsed)}</span>
+    </div>
+  )
+}
+
+export function JobProgress({ status, progressPct, progressMsg, error, isComplete, onRetry, sequenceCount, totalLength }: JobProgressProps) {
   const isFailed = status === 'failed'
+
+  // Estimate total time based on sequence count and total length
+  const estimatedMinutes = sequenceCount && totalLength
+    ? Math.max(2, Math.round((sequenceCount * totalLength) / 500_000))
+    : null
 
   return (
     <div className="flex flex-col items-center justify-center gap-8 p-8 w-full max-w-lg mx-auto">
@@ -116,6 +150,18 @@ export function JobProgress({ status, progressPct, progressMsg, error, isComplet
         </div>
       </div>
 
+      {/* Time info */}
+      {!isComplete && !isFailed && (
+        <div className="w-full flex items-center justify-between">
+          <ElapsedTimer />
+          {estimatedMinutes && (
+            <span className="font-mono text-[10px] text-text-dim">
+              Estimativa: ~{estimatedMinutes}min
+            </span>
+          )}
+        </div>
+      )}
+
       {/* ScanLoader during active processing */}
       {!isComplete && !isFailed && (
         <div className="w-full">
@@ -123,7 +169,7 @@ export function JobProgress({ status, progressPct, progressMsg, error, isComplet
         </div>
       )}
 
-      {/* Error display */}
+      {/* Error display with retry */}
       {isFailed && error && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -134,6 +180,15 @@ export function JobProgress({ status, progressPct, progressMsg, error, isComplet
             <AlertCircle className="w-4 h-4 text-red shrink-0 mt-0.5" />
             <p className="font-mono text-sm text-red">{error}</p>
           </div>
+          {onRetry && (
+            <button
+              onClick={onRetry}
+              className="mt-3 flex items-center gap-2 px-4 py-2 rounded border border-cyan/40 bg-cyan/10 text-cyan font-mono text-xs font-semibold hover:bg-cyan/20 transition-colors cursor-pointer mx-auto"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              TENTAR NOVAMENTE
+            </button>
+          )}
         </motion.div>
       )}
 

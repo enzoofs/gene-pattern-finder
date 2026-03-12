@@ -30,19 +30,34 @@ def run_fasttree(aligned_fasta: str, is_nucleotide: bool = True) -> str:
     return newick
 
 
+def _count_sequences(fasta_path: str) -> int:
+    count = 0
+    with open(fasta_path) as f:
+        for line in f:
+            if line.startswith(">"):
+                count += 1
+    return count
+
+
 def run_iqtree(aligned_fasta: str, is_nucleotide: bool = True) -> dict:
     work_dir = tempfile.mkdtemp(prefix="iqtree_")
     prefix = os.path.join(work_dir, "analysis")
+    n_seqs = _count_sequences(aligned_fasta)
 
     cmd = [
         settings.iqtree_bin,
         "-s", aligned_fasta,
         "-m", "MFP",
-        "-bb", "1000",
         "-nt", "AUTO",
         "-pre", prefix,
         "--quiet",
     ]
+
+    # Bootstrap requires at least 4 sequences
+    if n_seqs >= 4:
+        cmd.extend(["-bb", "1000"])
+    else:
+        logger.info("Skipping bootstrap: only %d sequences (need 4+)", n_seqs)
 
     logger.info("Running IQ-TREE: %s", " ".join(cmd))
     result = subprocess.run(
