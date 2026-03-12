@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
-from app.routers import species, sequences, analysis
+from app.routers import species, sequences, collections, jobs
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,7 +27,9 @@ app.add_middleware(
 
 app.include_router(species.router)
 app.include_router(sequences.router)
-app.include_router(analysis.router)
+app.include_router(collections.router)
+app.include_router(jobs.router)
+app.include_router(jobs.ws_router)
 
 @app.get("/api/health")
 async def health():

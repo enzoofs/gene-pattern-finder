@@ -1,11 +1,15 @@
 import asyncio
+import logging
 from functools import partial
 from Bio import Entrez, SeqIO
 from io import StringIO
 from app.config import settings
 from app.models import SeqType
 
+logger = logging.getLogger(__name__)
+
 Entrez.email = settings.ncbi_email
+Entrez.timeout = 30  # 30s timeout for all NCBI requests
 if settings.ncbi_api_key:
     Entrez.api_key = settings.ncbi_api_key
 
@@ -65,18 +69,25 @@ def _fetch_sequences_sync(taxon_id: int, seq_type: SeqType, max_results: int = 5
     # Build search term with RefSeq filter and reasonable size range
     base_term = f"txid{taxon_id}[Organism]"
     if seq_type == SeqType.protein:
-        term = f"{base_term} AND refseq[filter]"
+        term = f"{base_term} AND refseq[filter] AND 50:5000[SLEN]"
     else:
-        term = f"{base_term} AND refseq[filter] AND 100:100000[SLEN]"
+        term = f"{base_term} AND refseq[filter] AND 100:10000[SLEN]"
+
+    logger.info("NCBI search: db=%s term=%s max=%d", db, term, max_results)
 
     handle = Entrez.esearch(db=db, term=term, retmax=max_results, usehistory="y")
     result = Entrez.read(handle)
     handle.close()
 
     count = int(result["Count"])
+    logger.info("NCBI search returned count=%d", count)
+
     if count == 0:
         # Fallback without RefSeq filter
-        term = f"{base_term} AND 100:100000[SLEN]"
+        if seq_type == SeqType.protein:
+            term = f"{base_term} AND 50:5000[SLEN]"
+        else:
+            term = f"{base_term} AND 100:10000[SLEN]"
         handle = Entrez.esearch(db=db, term=term, retmax=max_results, usehistory="y")
         result = Entrez.read(handle)
         handle.close()
@@ -87,13 +98,17 @@ def _fetch_sequences_sync(taxon_id: int, seq_type: SeqType, max_results: int = 5
     webenv = result["WebEnv"]
     query_key = result["QueryKey"]
 
+    # Fetch only up to max_results, capped to avoid huge downloads
+    fetch_count = min(max_results, count)
+    logger.info("NCBI efetch: fetching %d sequences", fetch_count)
+
     handle = Entrez.efetch(
         db=db,
         query_key=query_key,
         WebEnv=webenv,
         rettype="fasta",
         retmode="text",
-        retmax=max_results,
+        retmax=fetch_count,
     )
     fasta_text = handle.read()
     handle.close()
