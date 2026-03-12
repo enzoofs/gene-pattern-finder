@@ -1,10 +1,11 @@
 import { useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Trash2, Dna, FlaskConical } from 'lucide-react'
+import { Plus, Trash2, Dna, FlaskConical, List, Layers } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
 import { GlowButton } from '@/components/ui/GlowButton'
 import { SpeciesSearch } from './SpeciesSearch'
+import { useElapsedTime } from '@/hooks/useElapsedTime'
 import type {
   SpeciesSearchResult,
   SequenceOut,
@@ -36,6 +37,52 @@ const panelVariants = {
   exit: { opacity: 0, y: -8 },
 }
 
+// --- Sequence type badge logic ---
+
+type BadgeKind = 'PLASMID' | 'GENOME' | 'rRNA' | 'GENE' | 'FRAGMENT'
+
+const BADGE_STYLES: Record<BadgeKind, string> = {
+  PLASMID: 'bg-amber/15 text-amber border-amber/30',
+  GENOME: 'bg-green/15 text-green border-green/30',
+  rRNA: 'bg-cyan/15 text-cyan border-cyan/30',
+  GENE: 'bg-purple/15 text-purple border-purple/30',
+  FRAGMENT: 'bg-text-dim/10 text-text-dim border-text-dim/20',
+}
+
+function classifySequence(title: string): BadgeKind {
+  const t = title.toLowerCase()
+  if (t.includes('plasmid')) return 'PLASMID'
+  if (t.includes('chromosome') || t.includes('complete genome')) return 'GENOME'
+  if (t.includes('16s') || t.includes('rrna')) return 'rRNA'
+  if (t.includes('gene') || t.includes('cds')) return 'GENE'
+  return 'FRAGMENT'
+}
+
+function SequenceBadge({ title }: { title: string }) {
+  const kind = classifySequence(title)
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center px-1.5 py-0.5 rounded border text-[9px] font-mono font-semibold uppercase tracking-wider shrink-0',
+        BADGE_STYLES[kind],
+      )}
+    >
+      {kind}
+    </span>
+  )
+}
+
+// --- Batch search types ---
+
+type BatchItemStatus = 'pending' | 'loading' | 'found' | 'not_found' | 'error'
+
+interface BatchItem {
+  name: string
+  status: BatchItemStatus
+  results: SpeciesSearchResult[]
+  error?: string
+}
+
 export function CollectionBuilder({
   collection,
   entries,
@@ -51,6 +98,18 @@ export function CollectionBuilder({
   const [isLoadingSeqs, setIsLoadingSeqs] = useState(false)
   const [isAdding, setIsAdding] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Search mode toggle
+  const [searchMode, setSearchMode] = useState<'individual' | 'batch'>('individual')
+
+  // Batch search state
+  const [batchInput, setBatchInput] = useState('')
+  const [batchItems, setBatchItems] = useState<BatchItem[]>([])
+  const [isBatchSearching, setIsBatchSearching] = useState(false)
+
+  // Elapsed timers
+  const seqElapsed = useElapsedTime(isLoadingSeqs)
+  const batchElapsed = useElapsedTime(isBatchSearching)
 
   const handleSpeciesSelect = useCallback(
     async (species: SpeciesSearchResult) => {
@@ -93,8 +152,9 @@ export function CollectionBuilder({
   )
 
   const handleAddSequence = useCallback(
-    async (seq: SequenceOut) => {
-      if (!selectedSpecies) return
+    async (seq: SequenceOut, speciesOverride?: SpeciesSearchResult) => {
+      const species = speciesOverride || selectedSpecies
+      if (!species) return
       setIsAdding(seq.id)
       setError(null)
 
@@ -108,7 +168,7 @@ export function CollectionBuilder({
           onCollectionCreated(col)
         }
 
-        const entry = await api.addToCollection(col.id, selectedSpecies.taxon_id, seq.id)
+        const entry = await api.addToCollection(col.id, species.taxon_id, seq.id)
         onEntryAdded(entry)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Falha ao adicionar sequência')
@@ -132,6 +192,70 @@ export function CollectionBuilder({
       }
     },
     [collection, onEntryRemoved],
+  )
+
+  // --- Batch search ---
+  const handleBatchSearch = useCallback(async () => {
+    const names = batchInput
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0)
+
+    if (names.length === 0) return
+
+    const items: BatchItem[] = names.map((name) => ({
+      name,
+      status: 'pending',
+      results: [],
+    }))
+
+    setBatchItems(items)
+    setIsBatchSearching(true)
+
+    // Search all in parallel, updating state as each completes
+    const promises = names.map(async (name, idx) => {
+      // Mark loading
+      setBatchItems((prev) => {
+        const next = [...prev]
+        next[idx] = { ...next[idx], status: 'loading' }
+        return next
+      })
+
+      try {
+        const results = await api.searchSpecies(name)
+        setBatchItems((prev) => {
+          const next = [...prev]
+          next[idx] = {
+            ...next[idx],
+            status: results.length > 0 ? 'found' : 'not_found',
+            results,
+          }
+          return next
+        })
+      } catch (err) {
+        setBatchItems((prev) => {
+          const next = [...prev]
+          next[idx] = {
+            ...next[idx],
+            status: 'error',
+            error: err instanceof Error ? err.message : 'Erro na busca',
+          }
+          return next
+        })
+      }
+    })
+
+    await Promise.allSettled(promises)
+    setIsBatchSearching(false)
+  }, [batchInput])
+
+  const handleBatchSpeciesSelect = useCallback(
+    (species: SpeciesSearchResult) => {
+      handleSpeciesSelect(species)
+      // Switch back to individual mode to show sequence list
+      setSearchMode('individual')
+    },
+    [handleSpeciesSelect],
   )
 
   const addedSequenceIds = new Set(entries.map((e) => e.sequence.id))
@@ -163,12 +287,153 @@ export function CollectionBuilder({
         </div>
       </div>
 
-      {/* Species search */}
+      {/* Species search with mode toggle */}
       <div className="p-4 border-b border-border">
-        <label className="block font-mono text-[10px] text-text-dim uppercase tracking-wider mb-2">
-          02 // Buscar Espécie
-        </label>
-        <SpeciesSearch onSelect={handleSpeciesSelect} />
+        <div className="flex items-center justify-between mb-2">
+          <label className="block font-mono text-[10px] text-text-dim uppercase tracking-wider">
+            02 // Buscar Espécie
+          </label>
+          <div className="flex gap-1">
+            <button
+              onClick={() => setSearchMode('individual')}
+              className={cn(
+                'flex items-center gap-1 px-2 py-1 rounded font-mono text-[10px] transition-colors cursor-pointer',
+                searchMode === 'individual'
+                  ? 'bg-cyan/15 text-cyan border border-cyan/30'
+                  : 'text-text-dim hover:text-text-muted border border-transparent',
+              )}
+              title="Busca Individual"
+            >
+              <List className="w-3 h-3" />
+              Individual
+            </button>
+            <button
+              onClick={() => setSearchMode('batch')}
+              className={cn(
+                'flex items-center gap-1 px-2 py-1 rounded font-mono text-[10px] transition-colors cursor-pointer',
+                searchMode === 'batch'
+                  ? 'bg-cyan/15 text-cyan border border-cyan/30'
+                  : 'text-text-dim hover:text-text-muted border border-transparent',
+              )}
+              title="Busca em Lote"
+            >
+              <Layers className="w-3 h-3" />
+              Lote
+            </button>
+          </div>
+        </div>
+
+        <AnimatePresence mode="wait">
+          {searchMode === 'individual' ? (
+            <motion.div
+              key="individual"
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.15 }}
+            >
+              <SpeciesSearch onSelect={handleSpeciesSelect} />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="batch"
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.15 }}
+              className="flex flex-col gap-2"
+            >
+              <textarea
+                value={batchInput}
+                onChange={(e) => setBatchInput(e.target.value)}
+                placeholder={
+                  'Cole os nomes das espécies, um por linha...\n\nExemplo:\nEscherichia coli\nSalmonella enterica\nKlebsiella pneumoniae'
+                }
+                className={cn(
+                  'w-full px-3 py-3 bg-panel border border-border rounded font-mono text-sm text-text',
+                  'placeholder:text-text-dim outline-none transition-all resize-none',
+                  'focus:border-cyan focus:glow-cyan',
+                  'min-h-[120px]',
+                )}
+              />
+              <GlowButton
+                onClick={handleBatchSearch}
+                disabled={isBatchSearching || batchInput.trim().length === 0}
+                loading={isBatchSearching}
+                className="w-full"
+              >
+                {isBatchSearching
+                  ? `Buscando... (${batchElapsed}s)`
+                  : 'Buscar Todas'}
+              </GlowButton>
+
+              {/* Batch results */}
+              {batchItems.length > 0 && (
+                <div className="flex flex-col gap-1 max-h-[300px] overflow-y-auto pr-1 mt-1">
+                  {batchItems.map((item, idx) => (
+                    <motion.div
+                      key={`${item.name}-${idx}`}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.15, delay: idx * 0.03 }}
+                      className="px-3 py-2 rounded border border-border bg-panel/60"
+                    >
+                      <div className="flex items-center gap-2">
+                        {/* Status indicator */}
+                        <span
+                          className={cn(
+                            'w-2 h-2 rounded-full shrink-0',
+                            item.status === 'pending' && 'bg-text-dim/40',
+                            item.status === 'loading' && 'bg-cyan animate-pulse',
+                            item.status === 'found' && 'bg-green',
+                            item.status === 'not_found' && 'bg-amber',
+                            item.status === 'error' && 'bg-red',
+                          )}
+                        />
+                        <span className="font-mono text-xs text-text flex-1 truncate">
+                          {item.name}
+                        </span>
+                        <span className="font-mono text-[10px] text-text-dim shrink-0">
+                          {item.status === 'pending' && 'Aguardando'}
+                          {item.status === 'loading' && 'Buscando...'}
+                          {item.status === 'found' &&
+                            `${item.results.length} resultado${item.results.length !== 1 ? 's' : ''}`}
+                          {item.status === 'not_found' && 'Não encontrado'}
+                          {item.status === 'error' && (item.error || 'Erro')}
+                        </span>
+                      </div>
+
+                      {/* Show first result with select button if found */}
+                      {item.status === 'found' && item.results.length > 0 && (
+                        <div className="mt-1.5 flex flex-col gap-1">
+                          {item.results.slice(0, 3).map((species) => (
+                            <button
+                              key={species.taxon_id}
+                              onClick={() => handleBatchSpeciesSelect(species)}
+                              className={cn(
+                                'flex items-center gap-2 px-2 py-1.5 rounded text-left',
+                                'border border-transparent transition-all cursor-pointer',
+                                'hover:bg-cyan/5 hover:border-cyan/20',
+                              )}
+                            >
+                              <span className="text-xs text-text font-semibold truncate flex-1">
+                                {species.name}
+                              </span>
+                              <span className="text-[10px] font-mono text-text-dim uppercase shrink-0">
+                                {species.rank}
+                              </span>
+                              <Plus className="w-3.5 h-3.5 text-text-dim shrink-0" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Sequences for selected species */}
@@ -193,7 +458,7 @@ export function CollectionBuilder({
                 animate={{ opacity: [0.4, 1, 0.4] }}
                 transition={{ duration: 1.5, repeat: Infinity }}
               >
-                Buscando sequências...
+                Buscando sequências...{seqElapsed > 0 && ` (${seqElapsed}s)`}
               </motion.span>
             )}
 
@@ -227,6 +492,7 @@ export function CollectionBuilder({
                           <span className="font-mono text-xs text-cyan font-semibold shrink-0">
                             {seq.accession}
                           </span>
+                          <SequenceBadge title={seq.title} />
                           <span className="font-mono text-[11px] text-text-muted">
                             {seq.length.toLocaleString()} {seq.seq_type === 'protein' ? 'aa' : 'bp'}
                           </span>
@@ -288,9 +554,12 @@ export function CollectionBuilder({
                   <span className="font-mono text-xs text-text font-semibold truncate block">
                     {entry.species.name}
                   </span>
-                  <span className="font-mono text-[10px] text-text-dim truncate block">
-                    {entry.sequence.accession}
-                  </span>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="font-mono text-[10px] text-text-dim truncate">
+                      {entry.sequence.accession}
+                    </span>
+                    <SequenceBadge title={entry.sequence.title} />
+                  </div>
                 </div>
                 <button
                   onClick={() => handleRemoveEntry(entry.sequence.id)}

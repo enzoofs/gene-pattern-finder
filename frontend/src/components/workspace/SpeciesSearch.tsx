@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Search } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useDebounce } from '@/hooks/useDebounce'
+import { useElapsedTime } from '@/hooks/useElapsedTime'
 import { cn } from '@/lib/utils'
 import type { SpeciesSearchResult } from '@/lib/types'
 
@@ -14,6 +15,7 @@ export function SpeciesSearch({ onSelect }: SpeciesSearchProps) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SpeciesSearchResult[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const elapsed = useElapsedTime(isLoading)
   const [error, setError] = useState<string | null>(null)
   const [isOpen, setIsOpen] = useState(false)
   const [isFocused, setIsFocused] = useState(false)
@@ -104,7 +106,7 @@ export function SpeciesSearch({ onSelect }: SpeciesSearchProps) {
             animate={{ opacity: [0.4, 1, 0.4] }}
             transition={{ duration: 1.5, repeat: Infinity }}
           >
-            Scanning NCBI...
+            Buscando no NCBI...{elapsed > 0 && ` (${elapsed}s)`}
           </motion.span>
         </div>
       )}
