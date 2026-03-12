@@ -1,12 +1,17 @@
+import logging
+
 from fastapi import APIRouter, Query, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from app.database import get_db
 from app.models import Species, Sequence, SeqType, SeqSource
 from app.services.ncbi import fetch_sequences, search_species
 from app.schemas import SequenceListResponse, SequenceOut, SpeciesOut
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/sequences", tags=["sequences"])
+
 
 @router.get("/{taxon_id}", response_model=SequenceListResponse)
 async def get_sequences(
@@ -42,7 +47,8 @@ async def get_sequences(
 
     if not species:
         sp_data = await search_species(str(taxon_id))
-        sp_info = next((s for s in sp_data if s["taxon_id"] == taxon_id), None)
+        # Accept any returned species (NCBI may redirect merged taxon IDs)
+        sp_info = next(iter(sp_data), None)
         if sp_info:
             species = Species(
                 taxon_id=sp_info["taxon_id"],
@@ -56,8 +62,17 @@ async def get_sequences(
     if not species:
         raise HTTPException(404, "Species not found on NCBI")
 
+    # Get existing accessions to avoid duplicate inserts
+    existing_accs_stmt = select(Sequence.accession).where(
+        Sequence.accession.in_([s["accession"] for s in raw_seqs])
+    )
+    existing_result = await db.execute(existing_accs_stmt)
+    existing_accs = {row[0] for row in existing_result}
+
     db_sequences = []
     for seq_data in raw_seqs:
+        if seq_data["accession"] in existing_accs:
+            continue
         seq = Sequence(
             species_id=species.id,
             accession=seq_data["accession"],
@@ -70,7 +85,19 @@ async def get_sequences(
         db.add(seq)
         db_sequences.append(seq)
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        logger.warning("IntegrityError during sequence insert for taxon %s, fetching from cache", taxon_id)
+        seq_stmt = (
+            select(Sequence)
+            .where(Sequence.species_id == species.id, Sequence.seq_type == type)
+            .limit(limit)
+        )
+        seq_result = await db.execute(seq_stmt)
+        db_sequences = list(seq_result.scalars().all())
+
     for s in db_sequences:
         await db.refresh(s)
     await db.refresh(species)

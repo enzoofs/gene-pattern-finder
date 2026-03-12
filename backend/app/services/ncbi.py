@@ -1,3 +1,5 @@
+import asyncio
+from functools import partial
 from Bio import Entrez, SeqIO
 from io import StringIO
 from app.config import settings
@@ -7,17 +9,34 @@ Entrez.email = settings.ncbi_email
 if settings.ncbi_api_key:
     Entrez.api_key = settings.ncbi_api_key
 
-async def search_species(query: str, max_results: int = 20) -> list[dict]:
-    handle = Entrez.esearch(db="taxonomy", term=query, retmax=max_results)
-    result = Entrez.read(handle)
-    handle.close()
 
-    if not result["IdList"]:
-        return []
+def _run_sync(func, *args, **kwargs):
+    """Helper to run blocking Entrez calls."""
+    return func(*args, **kwargs)
 
-    handle = Entrez.efetch(db="taxonomy", id=",".join(result["IdList"]), retmode="xml")
-    records = Entrez.read(handle)
-    handle.close()
+
+async def _to_thread(func, *args, **kwargs):
+    """Run a blocking function in a thread to avoid blocking the event loop."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, partial(func, *args, **kwargs))
+
+
+def _search_species_sync(query: str, max_results: int = 20) -> list[dict]:
+    if query.strip().isdigit():
+        handle = Entrez.efetch(db="taxonomy", id=query.strip(), retmode="xml")
+        records = Entrez.read(handle)
+        handle.close()
+    else:
+        handle = Entrez.esearch(db="taxonomy", term=query, retmax=max_results)
+        result = Entrez.read(handle)
+        handle.close()
+
+        if not result["IdList"]:
+            return []
+
+        handle = Entrez.efetch(db="taxonomy", id=",".join(result["IdList"]), retmode="xml")
+        records = Entrez.read(handle)
+        handle.close()
 
     return [
         {
@@ -29,41 +48,70 @@ async def search_species(query: str, max_results: int = 20) -> list[dict]:
         for rec in records
     ]
 
+
+async def search_species(query: str, max_results: int = 20) -> list[dict]:
+    return await _to_thread(_search_species_sync, query, max_results)
+
+
 def _get_db_for_type(seq_type: SeqType) -> str:
     if seq_type == SeqType.protein:
         return "protein"
     return "nucleotide"
 
-def _get_rettype_for_type(seq_type: SeqType) -> str:
-    return "fasta"
 
-async def fetch_sequences(taxon_id: int, seq_type: SeqType, max_results: int = 50) -> list[dict]:
+def _fetch_sequences_sync(taxon_id: int, seq_type: SeqType, max_results: int = 50) -> list[dict]:
     db = _get_db_for_type(seq_type)
-    term = f"txid{taxon_id}[Organism]"
 
-    handle = Entrez.esearch(db=db, term=term, retmax=max_results)
+    # Build search term with RefSeq filter and reasonable size range
+    base_term = f"txid{taxon_id}[Organism]"
+    if seq_type == SeqType.protein:
+        term = f"{base_term} AND refseq[filter]"
+    else:
+        term = f"{base_term} AND refseq[filter] AND 100:100000[SLEN]"
+
+    handle = Entrez.esearch(db=db, term=term, retmax=max_results, usehistory="y")
     result = Entrez.read(handle)
     handle.close()
 
-    if not result["IdList"]:
-        return []
+    count = int(result["Count"])
+    if count == 0:
+        # Fallback without RefSeq filter
+        term = f"{base_term} AND 100:100000[SLEN]"
+        handle = Entrez.esearch(db=db, term=term, retmax=max_results, usehistory="y")
+        result = Entrez.read(handle)
+        handle.close()
+        count = int(result["Count"])
+        if count == 0:
+            return []
+
+    webenv = result["WebEnv"]
+    query_key = result["QueryKey"]
 
     handle = Entrez.efetch(
         db=db,
-        id=",".join(result["IdList"]),
+        query_key=query_key,
+        WebEnv=webenv,
         rettype="fasta",
         retmode="text",
+        retmax=max_results,
     )
     fasta_text = handle.read()
     handle.close()
 
     sequences = []
     for record in SeqIO.parse(StringIO(fasta_text), "fasta"):
+        seq_str = str(record.seq)
+        if len(seq_str) == 0:
+            continue
         sequences.append({
             "accession": record.id.split(".")[0] if "." in record.id else record.id,
             "title": record.description,
-            "sequence": str(record.seq),
-            "length": len(record.seq),
+            "sequence": seq_str,
+            "length": len(seq_str),
         })
 
     return sequences
+
+
+async def fetch_sequences(taxon_id: int, seq_type: SeqType, max_results: int = 50) -> list[dict]:
+    return await _to_thread(_fetch_sequences_sync, taxon_id, seq_type, max_results)
