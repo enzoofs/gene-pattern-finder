@@ -7,6 +7,11 @@ class Settings(BaseSettings):
     ncbi_api_key: str = ""
     blast_bin_dir: str = ""
     blast_tmp_dir: str = "/tmp/blast_tmp"
+    redis_url: str = "redis://localhost:6379/0"
+    mafft_bin: str = "mafft"
+    fasttree_bin: str = "FastTree"
+    iqtree_bin: str = "iqtree2"
+    work_dir: str = "/tmp/gpf_work"
 
     class Config:
         env_file = ".env"
