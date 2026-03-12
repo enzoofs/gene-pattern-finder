@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+@theme {
+  --color-deep-bg: #0A0E17;
+  --color-panel: #111827;
+  --color-panel-hover: #1a2332;
+  --color-border: #1E293B;
+  --color-border-bright: #334155;
+  --color-cyan: #06B6D4;
+  --color-cyan-bright: #22D3EE;
+  --color-green: #10B981;
+  --color-red: #EF4444;
+  --color-amber: #F59E0B;
+  --color-text: #E2E8F0;
+  --color-text-muted: #94A3B8;
+  --color-text-dim: #64748B;
+
+  --font-mono: 'IBM Plex Mono', monospace;
+  --font-sans: 'Instrument Sans', sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-deep-bg text-text font-sans antialiased;
+  }
+
+  ::selection {
+    @apply bg-cyan/30 text-cyan-bright;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-deep-bg;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border-bright rounded-full;
+  }
+}
+
+@utility glow-cyan {
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.15), 0 0 60px rgba(6, 182, 212, 0.05);
+}
+
+@utility glow-text-cyan {
+  text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+}
+
+@utility scan-line {
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(6, 182, 212, 0.03) 50%,
+    transparent 100%
+  );
+  animation: scan 3s linear infinite;
+}
+
+@keyframes scan {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
