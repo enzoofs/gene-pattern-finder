@@ -6,7 +6,7 @@ from sqlalchemy import pool
 from alembic import context
 
 from app.database import Base
-from app.models import Species, Sequence, AnalysisResult
+from app.models import Species, Sequence, Collection, CollectionSpecies, AnalysisJob
 from app.config import settings
 
 # this is the Alembic Config object, which provides
