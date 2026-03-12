@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
 from uuid import UUID
-from app.models import SeqType, SeqSource, TreeMode
+from app.models import SeqType, SeqSource, JobStatus
 
 # --- Species ---
 class SpeciesSearchResult(BaseModel):
@@ -36,40 +36,62 @@ class SequenceListResponse(BaseModel):
     total: int
     from_cache: bool
 
-# --- Analysis ---
-class BlastRequest(BaseModel):
-    query_sequence: str = Field(..., min_length=10)
-    seq_type: SeqType
+# --- Collections ---
+class CollectionCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    seq_type: SeqType = SeqType.dna
+
+class CollectionSpeciesAdd(BaseModel):
     species_taxon_id: int
-    program: str = Field(..., pattern="^(blastn|blastp|blastx|tblastn|tblastx)$")
-    max_results: int = Field(default=50, ge=10, le=500)
+    sequence_id: UUID
 
-class BlastHit(BaseModel):
-    accession: str
-    title: str
-    score: float
-    evalue: float
-    identity_pct: float
-    coverage: float
-    query_start: int
-    query_end: int
-    hit_start: int
-    hit_end: int
-    query_aligned: str
-    match_line: str
-    hit_aligned: str
+class CollectionSpeciesOut(BaseModel):
+    species: SpeciesOut
+    sequence: SequenceOut
+    model_config = {"from_attributes": True}
 
-class BlastResponse(BaseModel):
+class CollectionOut(BaseModel):
     id: UUID
-    query_length: int
-    hits: list[BlastHit]
-    total_hits: int
+    name: str
+    seq_type: SeqType
+    species_count: int
+    created_at: datetime
+    model_config = {"from_attributes": True}
 
-class TreeRequest(BaseModel):
-    analysis_id: UUID
-    mode: TreeMode
+class CollectionDetailOut(BaseModel):
+    id: UUID
+    name: str
+    seq_type: SeqType
+    created_at: datetime
+    entries: list[CollectionSpeciesOut]
 
-class TreeResponse(BaseModel):
-    newick: str
-    labels: list[str]
-    distance_matrix: list[list[float]]
+# --- Jobs ---
+class JobCreate(BaseModel):
+    collection_id: UUID
+
+class JobStatusOut(BaseModel):
+    id: UUID
+    collection_id: UUID
+    status: JobStatus
+    progress_pct: int
+    progress_msg: str | None
+    error_msg: str | None
+    created_at: datetime
+    finished_at: datetime | None
+    model_config = {"from_attributes": True}
+
+class ConservedRegion(BaseModel):
+    start: int
+    end: int
+    length: int
+    avg_identity: float
+
+class JobResultsOut(BaseModel):
+    id: UUID
+    status: JobStatus
+    alignment: str | None
+    preview_tree: str | None
+    tree: str | None
+    tree_model: str | None
+    bootstrap_data: dict | None
+    conservation: dict | None
