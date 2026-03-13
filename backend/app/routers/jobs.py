@@ -47,7 +47,11 @@ async def get_job_results(job_id: UUID, db: AsyncSession = Depends(get_db)):
     job = await db.get(AnalysisJob, job_id)
     if not job:
         raise HTTPException(404, "Job not found")
-    if job.status not in (JobStatus.done, JobStatus.preview_tree, JobStatus.full_tree, JobStatus.conservation):
+    if job.status not in (
+        JobStatus.done, JobStatus.preview_tree, JobStatus.full_tree,
+        JobStatus.conservation, JobStatus.motifs, JobStatus.clustering,
+        JobStatus.network, JobStatus.insights,
+    ):
         raise HTTPException(400, f"Job not ready: {job.status.value}")
 
     return JobResultsOut(
@@ -55,6 +59,8 @@ async def get_job_results(job_id: UUID, db: AsyncSession = Depends(get_db)):
         alignment=job.alignment, preview_tree=job.preview_tree,
         tree=job.tree, tree_model=job.tree_model,
         bootstrap_data=job.bootstrap_data, conservation=job.conservation,
+        motifs=job.motifs, clustering=job.clustering, network=job.network,
+        insights=job.insights,
     )
 
 

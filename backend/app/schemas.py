@@ -102,3 +102,7 @@ class JobResultsOut(BaseModel):
     tree_model: str | None
     bootstrap_data: dict | list | None
     conservation: dict | None
+    motifs: dict | None = None
+    clustering: dict | None = None
+    network: dict | None = None
+    insights: dict | None = None

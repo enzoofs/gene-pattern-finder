@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { AlertCircle, Dna, GitBranch, BarChart3, AlignLeft, Download, FileSpreadsheet, Image, FileText } from 'lucide-react'
+import { AlertCircle, Dna, GitBranch, BarChart3, AlignLeft, Download, FileSpreadsheet, Image, FileText, Search, Layers, Share2, Lightbulb } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
 import { downloadBlob } from '@/lib/download'
@@ -10,6 +10,10 @@ import { JobProgress } from './JobProgress'
 import { Dendrogram } from '@/components/results/Dendrogram'
 import { ConservationMap } from '@/components/results/ConservationMap'
 import { AlignmentViewer } from '@/components/results/AlignmentViewer'
+import { MotifViewer } from '@/components/results/MotifViewer'
+import { ClusteringView } from '@/components/results/ClusteringView'
+import { NetworkGraph } from '@/components/results/NetworkGraph'
+import { InsightsPanel } from '@/components/results/InsightsPanel'
 import type {
   CollectionOut,
   CollectionSpeciesOut,
@@ -28,7 +32,11 @@ function ResultTabBar({
   const tabs: { id: ResultTab; label: string; icon: React.ReactNode }[] = [
     { id: 'tree', label: 'Arvore Filogenetica', icon: <GitBranch className="w-3.5 h-3.5" /> },
     { id: 'alignment', label: 'Alinhamento', icon: <AlignLeft className="w-3.5 h-3.5" /> },
-    { id: 'conservation', label: 'Regioes Conservadas', icon: <BarChart3 className="w-3.5 h-3.5" /> },
+    { id: 'conservation', label: 'Conservacao', icon: <BarChart3 className="w-3.5 h-3.5" /> },
+    { id: 'motifs', label: 'Motifs', icon: <Search className="w-3.5 h-3.5" /> },
+    { id: 'clustering', label: 'Clusters', icon: <Layers className="w-3.5 h-3.5" /> },
+    { id: 'network', label: 'Rede', icon: <Share2 className="w-3.5 h-3.5" /> },
+    { id: 'insights', label: 'Insights', icon: <Lightbulb className="w-3.5 h-3.5" /> },
   ]
 
   return (
@@ -246,7 +254,7 @@ export function AnalysisWorkspace() {
   // Fetch partial results when preview_tree step completes
   useEffect(() => {
     if (!job) return
-    if (jobProgress.status !== 'full_tree' && jobProgress.status !== 'conservation') return
+    if (!['full_tree', 'conservation', 'motifs', 'clustering', 'network', 'insights'].includes(jobProgress.status)) return
     if (jobResults) return
 
     api
@@ -457,6 +465,110 @@ export function AnalysisWorkspace() {
                   >
                     <p className="font-mono text-sm text-text-dim">
                       Dados de conservacao nao disponiveis
+                    </p>
+                  </motion.div>
+                )}
+
+                {activeTab === 'motifs' && jobResults.motifs && (
+                  <motion.div
+                    key="motifs-tab"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <MotifViewer data={jobResults.motifs} />
+                  </motion.div>
+                )}
+
+                {activeTab === 'motifs' && !jobResults.motifs && (
+                  <motion.div
+                    key="motifs-empty"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex items-center justify-center py-12"
+                  >
+                    <p className="font-mono text-sm text-text-dim">
+                      Dados de motifs nao disponiveis
+                    </p>
+                  </motion.div>
+                )}
+
+                {activeTab === 'clustering' && jobResults.clustering && (
+                  <motion.div
+                    key="clustering-tab"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <ClusteringView data={jobResults.clustering} />
+                  </motion.div>
+                )}
+
+                {activeTab === 'clustering' && !jobResults.clustering && (
+                  <motion.div
+                    key="clustering-empty"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex items-center justify-center py-12"
+                  >
+                    <p className="font-mono text-sm text-text-dim">
+                      Dados de clustering nao disponiveis
+                    </p>
+                  </motion.div>
+                )}
+
+                {activeTab === 'network' && jobResults.network && (
+                  <motion.div
+                    key="network-tab"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <NetworkGraph data={jobResults.network} />
+                  </motion.div>
+                )}
+
+                {activeTab === 'network' && !jobResults.network && (
+                  <motion.div
+                    key="network-empty"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex items-center justify-center py-12"
+                  >
+                    <p className="font-mono text-sm text-text-dim">
+                      Dados de rede nao disponiveis
+                    </p>
+                  </motion.div>
+                )}
+
+                {activeTab === 'insights' && jobResults.insights && (
+                  <motion.div
+                    key="insights-tab"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <InsightsPanel data={jobResults.insights} />
+                  </motion.div>
+                )}
+
+                {activeTab === 'insights' && !jobResults.insights && (
+                  <motion.div
+                    key="insights-empty"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex items-center justify-center py-12"
+                  >
+                    <p className="font-mono text-sm text-text-dim">
+                      Dados de insights nao disponiveis
                     </p>
                   </motion.div>
                 )}

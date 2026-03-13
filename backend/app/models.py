@@ -21,6 +21,10 @@ class JobStatus(str, enum.Enum):
     preview_tree = "preview_tree"
     full_tree = "full_tree"
     conservation = "conservation"
+    motifs = "motifs"
+    clustering = "clustering"
+    network = "network"
+    insights = "insights"
     done = "done"
     failed = "failed"
 
@@ -93,6 +97,10 @@ class AnalysisJob(Base):
     tree_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     bootstrap_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     conservation: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    motifs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    clustering: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    network: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    insights: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

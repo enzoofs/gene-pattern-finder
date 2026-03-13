@@ -327,7 +327,7 @@ export function CollectionBuilder({
 
       // Delay entre especies para respeitar rate limit do NCBI
       if (idx < names.length - 1) {
-        await new Promise((r) => setTimeout(r, 1000))
+        await new Promise((r) => setTimeout(r, 2000))
       }
     }
 
@@ -376,7 +376,28 @@ export function CollectionBuilder({
       })
 
       try {
-        const results = await api.searchSpecies(names[idx])
+        // Retry com backoff para lidar com rate limiting do NCBI
+        let results: SpeciesSearchResult[] = []
+        let lastErr: unknown
+        for (let retry = 0; retry < 3; retry++) {
+          try {
+            results = await api.searchSpecies(names[idx])
+            lastErr = null
+            break
+          } catch (e) {
+            lastErr = e
+            const msg = e instanceof Error ? e.message : ''
+            const retryable = msg.includes('429') || msg.includes('Muitas buscas') || msg.includes('502') || msg.includes('500') || msg.includes('NCBI indisponivel')
+            if (retryable && retry < 2) {
+              await new Promise((r) => setTimeout(r, 3000 * (retry + 1)))
+            } else {
+              break
+            }
+          }
+        }
+
+        if (lastErr) throw lastErr
+
         setBatchItems((prev) => {
           const next = [...prev]
           next[idx] = {
@@ -396,6 +417,11 @@ export function CollectionBuilder({
           }
           return next
         })
+      }
+
+      // Delay entre especies para respeitar rate limit do NCBI
+      if (idx < names.length - 1) {
+        await new Promise((r) => setTimeout(r, 1500))
       }
     }
 

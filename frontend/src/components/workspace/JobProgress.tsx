@@ -29,10 +29,14 @@ const PIPELINE_STEPS: PipelineStep[] = [
   { key: 'preview_tree', label: 'Árvore Preview' },
   { key: 'full_tree', label: 'Árvore Final' },
   { key: 'conservation', label: 'Conservação' },
+  { key: 'motifs', label: 'Motifs' },
+  { key: 'clustering', label: 'Clusters' },
+  { key: 'network', label: 'Rede' },
+  { key: 'insights', label: 'Insights' },
   { key: 'done', label: 'Concluído' },
 ]
 
-const STATUS_ORDER: JobStatus[] = ['queued', 'aligning', 'preview_tree', 'full_tree', 'conservation', 'done']
+const STATUS_ORDER: JobStatus[] = ['queued', 'aligning', 'preview_tree', 'full_tree', 'conservation', 'motifs', 'clustering', 'network', 'insights', 'done']
 
 function getStepState(stepKey: JobStatus, currentStatus: JobStatus): 'done' | 'active' | 'pending' {
   const stepIdx = STATUS_ORDER.indexOf(stepKey)

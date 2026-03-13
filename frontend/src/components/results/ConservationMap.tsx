@@ -133,7 +133,7 @@ export function ConservationMap({ data }: ConservationMapProps) {
             <table className="w-full">
               <thead>
                 <tr className="bg-panel/80 border-b border-border">
-                  {['Início', 'Fim', 'Comprimento', 'Identidade'].map((h) => (
+                  {['Início', 'Fim', 'Comprimento', 'Identidade', 'P-value'].map((h) => (
                     <th
                       key={h}
                       className="px-3 py-2 text-left font-mono text-[10px] text-text-dim uppercase tracking-wider font-semibold"
@@ -179,6 +179,9 @@ export function ConservationMap({ data }: ConservationMapProps) {
                           {(region.avg_identity * 100).toFixed(1)}%
                         </span>
                       </div>
+                    </td>
+                    <td className="px-3 py-2 font-mono text-[11px] text-text-muted">
+                      {region.p_value != null ? region.p_value.toExponential(2) : '—'}
                     </td>
                   </motion.tr>
                 ))}

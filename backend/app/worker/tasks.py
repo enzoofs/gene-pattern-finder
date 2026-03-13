@@ -18,6 +18,11 @@ from app.models import AnalysisJob, Collection, CollectionSpecies, Sequence, Spe
 from app.services.mafft import run_mafft
 from app.services.iqtree import run_fasttree, run_iqtree
 from app.services.conservation import detect_conserved_regions
+from app.services.motifs import discover_motifs
+from app.services.distance import compute_distance_matrix
+from app.services.clustering import cluster_sequences
+from app.services.network import infer_network
+from app.services.insights import generate_insights
 from app.utils.sequence import validate_dna, validate_rna, validate_protein
 from app.worker.celery_app import celery_app
 
@@ -187,16 +192,99 @@ def run_analysis(self, job_id: str, outgroup: str | None = None):
                 )
                 _publish_progress(job_uuid, 90, "Detecting conserved regions...", "conservation")
 
-                # STEP 5: Conservation (90-100%)
+                # Determine seq_type string for services
+                seq_type_str = expected_type.value  # "dna", "rna", or "protein"
+
+                # STEP 5: Conservation + p-values (90-92%)
                 _update_job(db, job_uuid, status=JobStatus.conservation)
-                conservation_data = detect_conserved_regions(aligned_fasta, threshold=0.9)
+                conservation_data = detect_conserved_regions(
+                    aligned_fasta, threshold=0.9, seq_type=seq_type_str,
+                )
+
+                _update_job(
+                    db, job_uuid,
+                    progress_pct=92,
+                    progress_msg="Conservation complete. Discovering motifs...",
+                    conservation=conservation_data,
+                )
+                _publish_progress(job_uuid, 92, "Discovering motifs...", "motifs")
+
+                # STEP 6: Motif Discovery + p-values + PWM (92-93%)
+                _update_job(db, job_uuid, status=JobStatus.motifs)
+                motifs_data = discover_motifs(aligned_fasta, seq_type=seq_type_str)
+
+                _update_job(
+                    db, job_uuid,
+                    progress_pct=93,
+                    progress_msg="Motifs found. Computing distance matrix...",
+                    motifs=motifs_data,
+                )
+                _publish_progress(job_uuid, 93, "Computing distance matrix...", "clustering")
+
+                # STEP 7: Shared distance matrix — Kimura 2-param (93-94%)
+                dist_matrix, seq_labels = compute_distance_matrix(
+                    aligned_fasta, seq_type=seq_type_str,
+                )
+
+                _update_job(
+                    db, job_uuid,
+                    progress_pct=94,
+                    progress_msg="Distance matrix ready. Clustering sequences...",
+                )
+                _publish_progress(job_uuid, 94, "Clustering sequences...", "clustering")
+
+                # STEP 8: Clustering + bootstrap (94-96%)
+                _update_job(db, job_uuid, status=JobStatus.clustering)
+                clustering_data = cluster_sequences(
+                    aligned_fasta,
+                    dist_matrix=dist_matrix,
+                    seq_labels=seq_labels,
+                    seq_type=seq_type_str,
+                )
+
+                _update_job(
+                    db, job_uuid,
+                    progress_pct=96,
+                    progress_msg="Clustering complete. Inferring network...",
+                    clustering=clustering_data,
+                )
+                _publish_progress(job_uuid, 96, "Inferring network...", "network")
+
+                # STEP 9: Network + centrality (96-98%)
+                _update_job(db, job_uuid, status=JobStatus.network)
+                cluster_labels = clustering_data.get("labels") if clustering_data else None
+                network_data = infer_network(
+                    aligned_fasta,
+                    cluster_labels=cluster_labels,
+                    dist_matrix=dist_matrix,
+                    seq_labels=seq_labels,
+                    seq_type=seq_type_str,
+                )
+
+                _update_job(
+                    db, job_uuid,
+                    progress_pct=98,
+                    progress_msg="Network complete. Generating insights...",
+                    network=network_data,
+                )
+                _publish_progress(job_uuid, 98, "Generating insights...", "insights")
+
+                # STEP 10: Insights — automated hypothesis generation (98-100%)
+                _update_job(db, job_uuid, status=JobStatus.insights)
+                insights_data = generate_insights(
+                    conservation=conservation_data,
+                    motifs=motifs_data,
+                    clustering=clustering_data,
+                    network=network_data,
+                    seq_type=seq_type_str,
+                )
 
                 _update_job(
                     db, job_uuid,
                     status=JobStatus.done,
                     progress_pct=100,
                     progress_msg="Analysis complete",
-                    conservation=conservation_data,
+                    insights=insights_data,
                     finished_at=datetime.now(timezone.utc),
                 )
                 _publish_progress(job_uuid, 100, "Analysis complete", "done")

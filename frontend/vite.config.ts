@@ -11,6 +11,8 @@ export default defineConfig({
     },
   },
   server: {
+    host: true,
+    allowedHosts: ['.ngrok-free.app', '.ngrok.io'],
     proxy: {
       '/api': 'http://localhost:8000',
       '/ws': {

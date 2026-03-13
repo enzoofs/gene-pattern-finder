@@ -119,18 +119,56 @@ async def auto_add_species(
         db.add(species)
         await db.flush()
 
-    # 3. Busca sequencias com o gene-alvo (max_results=5 — so precisa da melhor)
+    # 3. Busca sequencias — primeiro tenta cache local, depois NCBI
     seq_type = SeqType(gene_info.seq_type)
-    try:
-        raw_seqs = await fetch_sequences(sp_info["taxon_id"], seq_type, max_results=5, gene=gene_info.gene_query)
-    except Exception as e:
-        logger.error("NCBI fetch failed for %s: %s", sp_info['name'], e)
-        raise HTTPException(502, f"NCBI indisponivel para {sp_info['name']}: {e}")
+    raw_seqs = []
+    from_cache = False
+
+    # Cache: verifica se ja temos sequencias desta especie no banco
+    cached_result = await db.execute(
+        select(Sequence).where(
+            Sequence.species_id == species.id,
+            Sequence.seq_type == seq_type,
+        )
+    )
+    cached_list = cached_result.scalars().all()
+    if cached_list:
+        gene_lower = gene_info.gene_query.lower()
+        gene_matches = [s for s in cached_list if gene_lower in s.title.lower()]
+        if gene_matches:
+            raw_seqs = [{"accession": s.accession, "title": s.title, "sequence": s.sequence, "length": s.length} for s in gene_matches]
+            from_cache = True
+            logger.info("Cache hit: %d seqs for %s %s", len(raw_seqs), sp_info['name'], gene_info.gene_query)
+
+    # Se nao achou no cache, busca no NCBI
+    if not raw_seqs:
+        try:
+            raw_seqs = await fetch_sequences(sp_info["taxon_id"], seq_type, max_results=5, gene=gene_info.gene_query)
+        except Exception as e:
+            logger.error("NCBI fetch failed for %s: %s", sp_info['name'], e)
+            raise HTTPException(502, f"NCBI indisponivel para {sp_info['name']}: {e}")
+
+        # Fallback: busca sem filtro de gene se nao encontrou
+        if not raw_seqs:
+            try:
+                raw_seqs = await fetch_sequences(sp_info["taxon_id"], seq_type, max_results=5, gene="")
+            except Exception as e:
+                logger.error("NCBI fallback fetch failed for %s: %s", sp_info['name'], e)
 
     if not raw_seqs:
         raise HTTPException(404, f"Nenhuma sequencia de '{gene_info.label}' encontrada para {sp_info['name']}")
 
     # 4. Scoring para selecionar a melhor sequencia
+    # Calcula mediana dos tamanhos existentes na colecao para scoring por similaridade
+    existing_entries_stmt = (
+        select(CollectionSpecies)
+        .where(CollectionSpecies.collection_id == collection_id)
+        .options(selectinload(CollectionSpecies.sequence))
+    )
+    existing_entries = (await db.execute(existing_entries_stmt)).scalars().all()
+    existing_lengths = [e.sequence.length for e in existing_entries if e.sequence]
+    median_len = sorted(existing_lengths)[len(existing_lengths) // 2] if existing_lengths else None
+
     def score_seq(s: dict) -> int:
         score = 0
         title_lower = s["title"].lower()
@@ -147,6 +185,10 @@ async def auto_add_species(
         # Penaliza genomas completos
         if "complete genome" in title_lower or "chromosome" in title_lower:
             score -= 10
+        # Bonus por tamanho similar as sequencias ja na colecao
+        if median_len:
+            ratio = min(length, median_len) / max(length, median_len)
+            score += int(ratio * 15)
         return score
 
     raw_seqs.sort(key=score_seq, reverse=True)
