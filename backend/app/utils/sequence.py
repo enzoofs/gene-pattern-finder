@@ -1,10 +1,11 @@
 import re
 
+# IUPAC: R=AG, Y=CT, S=GC, W=AT, K=GT, M=AC, B=CGT, D=AGT, H=ACT, V=ACG
 def validate_dna(seq: str) -> bool:
-    return bool(re.match(r'^[ATCGNatcgn\s]+$', seq))
+    return bool(re.match(r'^[ATCGNRYSWKMBDHVatcgnryswkmbdhv\s]+$', seq))
 
 def validate_rna(seq: str) -> bool:
-    return bool(re.match(r'^[AUCGNaucgn\s]+$', seq))
+    return bool(re.match(r'^[AUCGNRYSWKMBDHVaucgnryswkmbdhv\s]+$', seq))
 
 def validate_protein(seq: str) -> bool:
     return bool(re.match(r'^[ACDEFGHIKLMNPQRSTVWY*acdefghiklmnpqrstvwy\s]+$', seq))

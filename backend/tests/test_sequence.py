@@ -22,6 +22,10 @@ class TestValidateDNA:
     def test_invalid_dna_with_protein_chars(self):
         assert validate_dna("MKVLWAALLLL") is False
 
+    def test_valid_dna_iupac_ambiguity(self):
+        """Codigos IUPAC de ambiguidade devem ser aceitos (R, Y, S, W, K, M, B, D, H, V)."""
+        assert validate_dna("ATCGRYSWKMBDHV") is True
+
     def test_empty_string(self):
         assert validate_dna("") is False
 
