@@ -18,7 +18,7 @@ export function Header() {
       </div>
       <div className="flex items-center gap-4">
         <span className="text-xs font-mono text-text-dim">
-          v0.2.2
+          v0.3.0
         </span>
         <div className="flex items-center gap-2">
           <div className="w-1.5 h-1.5 rounded-full bg-green" />

@@ -33,6 +33,11 @@ def _build_mafft_command(input_fasta: str) -> tuple[list[str], dict[str, str]]:
         env["TEMP"] = win_tmp
         cmd = [bash_exe, mafft_script, "--auto", "--thread", "1", input_fasta]
     else:
+        # No Linux, se MAFFT_BINARIES estiver configurado (distribuicao standalone),
+        # setar no env do subprocess pra ele encontrar os helpers
+        mafft_binaries = os.environ.get("MAFFT_BINARIES", "")
+        if mafft_binaries:
+            env["MAFFT_BINARIES"] = mafft_binaries
         cmd = [mafft_bin, "--auto", "--thread", "-1", input_fasta]
 
     return cmd, env

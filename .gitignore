@@ -11,3 +11,9 @@ node_modules/
 *.db
 /backend/alembic/versions/__pycache__/
 tools/
+.pytest_cache/
+*.egg
+.eggs/
+*.log
+.DS_Store
+Thumbs.db

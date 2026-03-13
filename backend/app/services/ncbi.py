@@ -69,11 +69,14 @@ def _get_db_for_type(seq_type: SeqType) -> str:
     return "nucleotide"
 
 
-def _fetch_sequences_sync(taxon_id: int, seq_type: SeqType, max_results: int = 50) -> list[dict]:
+def _fetch_sequences_sync(taxon_id: int, seq_type: SeqType, max_results: int = 50, gene: str = "") -> list[dict]:
     db = _get_db_for_type(seq_type)
 
     # Build search term with RefSeq filter and reasonable size range
     base_term = f"txid{taxon_id}[Organism]"
+    if gene:
+        # Filtro por gene/titulo — busca no titulo e no campo gene
+        base_term += f" AND ({gene}[Gene] OR {gene}[Title])"
     if seq_type == SeqType.protein:
         term = f"{base_term} AND refseq[filter] AND 50:5000[SLEN]"
     else:
@@ -89,7 +92,7 @@ def _fetch_sequences_sync(taxon_id: int, seq_type: SeqType, max_results: int = 5
     logger.info("NCBI search returned count=%d", count)
 
     if count == 0:
-        # Fallback without RefSeq filter
+        # Fallback sem RefSeq filter
         if seq_type == SeqType.protein:
             term = f"{base_term} AND 50:5000[SLEN]"
         else:
@@ -134,5 +137,5 @@ def _fetch_sequences_sync(taxon_id: int, seq_type: SeqType, max_results: int = 5
     return sequences
 
 
-async def fetch_sequences(taxon_id: int, seq_type: SeqType, max_results: int = 50) -> list[dict]:
-    return await _to_thread(_fetch_sequences_sync, taxon_id, seq_type, max_results)
+async def fetch_sequences(taxon_id: int, seq_type: SeqType, max_results: int = 50, gene: str = "") -> list[dict]:
+    return await _to_thread(_fetch_sequences_sync, taxon_id, seq_type, max_results, gene)

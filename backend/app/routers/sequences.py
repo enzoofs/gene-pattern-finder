@@ -18,32 +18,38 @@ async def get_sequences(
     taxon_id: int,
     type: SeqType = Query(default=SeqType.dna),
     limit: int = Query(default=50, ge=10, le=500),
+    gene: str = Query(default="", description="Filtro por gene ou titulo (ex: COX1, 16S)"),
     db: AsyncSession = Depends(get_db),
 ):
-    # Check cache
-    stmt = select(Species).where(Species.taxon_id == taxon_id)
-    result = await db.execute(stmt)
-    species = result.scalar_one_or_none()
+    # Check cache (so usa cache se nao tem filtro de gene)
+    if not gene:
+        stmt = select(Species).where(Species.taxon_id == taxon_id)
+        result = await db.execute(stmt)
+        species = result.scalar_one_or_none()
 
-    if species:
-        seq_stmt = (
-            select(Sequence)
-            .where(Sequence.species_id == species.id, Sequence.seq_type == type)
-            .limit(limit)
-        )
-        seq_result = await db.execute(seq_stmt)
-        cached_seqs = seq_result.scalars().all()
-
-        if cached_seqs:
-            return SequenceListResponse(
-                species=SpeciesOut.model_validate(species),
-                sequences=[SequenceOut.model_validate(s) for s in cached_seqs],
-                total=len(cached_seqs),
-                from_cache=True,
+        if species:
+            seq_stmt = (
+                select(Sequence)
+                .where(Sequence.species_id == species.id, Sequence.seq_type == type)
+                .limit(limit)
             )
+            seq_result = await db.execute(seq_stmt)
+            cached_seqs = seq_result.scalars().all()
+
+            if cached_seqs:
+                return SequenceListResponse(
+                    species=SpeciesOut.model_validate(species),
+                    sequences=[SequenceOut.model_validate(s) for s in cached_seqs],
+                    total=len(cached_seqs),
+                    from_cache=True,
+                )
+    else:
+        stmt = select(Species).where(Species.taxon_id == taxon_id)
+        result = await db.execute(stmt)
+        species = result.scalar_one_or_none()
 
     # Fetch from NCBI
-    raw_seqs = await fetch_sequences(taxon_id, type, max_results=limit)
+    raw_seqs = await fetch_sequences(taxon_id, type, max_results=limit, gene=gene)
 
     if not species:
         sp_data = await search_species(str(taxon_id))

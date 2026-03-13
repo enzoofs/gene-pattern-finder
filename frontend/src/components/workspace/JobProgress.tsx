@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils'
 import { ScanLoader } from '@/components/ui/ScanLoader'
 import type { JobStatus } from '@/lib/types'
 
+type ConnectionStatus = 'websocket' | 'reconnecting' | 'polling'
+
 interface JobProgressProps {
   status: JobStatus
   progressPct: number
@@ -14,6 +16,7 @@ interface JobProgressProps {
   onRetry?: () => void
   sequenceCount?: number
   totalLength?: number
+  connectionStatus?: ConnectionStatus
 }
 
 interface PipelineStep {
@@ -68,7 +71,7 @@ function ElapsedTimer() {
   )
 }
 
-export function JobProgress({ status, progressPct, progressMsg, error, isComplete, onRetry, sequenceCount, totalLength }: JobProgressProps) {
+export function JobProgress({ status, progressPct, progressMsg, error, isComplete, onRetry, sequenceCount, totalLength, connectionStatus }: JobProgressProps) {
   const isFailed = status === 'failed'
 
   // Estimate total time based on sequence count and total length
@@ -150,10 +153,22 @@ export function JobProgress({ status, progressPct, progressMsg, error, isComplet
         </div>
       </div>
 
-      {/* Time info */}
+      {/* Time info + connection status */}
       {!isComplete && !isFailed && (
         <div className="w-full flex items-center justify-between">
-          <ElapsedTimer />
+          <div className="flex items-center gap-3">
+            <ElapsedTimer />
+            {connectionStatus === 'reconnecting' && (
+              <span className="font-mono text-[10px] text-amber animate-pulse">
+                Reconectando...
+              </span>
+            )}
+            {connectionStatus === 'polling' && (
+              <span className="font-mono text-[10px] text-text-dim">
+                Polling (3s)
+              </span>
+            )}
+          </div>
           {estimatedMinutes && (
             <span className="font-mono text-[10px] text-text-dim">
               Estimativa: ~{estimatedMinutes}min

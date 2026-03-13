@@ -7,6 +7,7 @@ import type {
   CollectionSpeciesOut,
   JobStatusOut,
   JobResultsOut,
+  GeneTarget,
 } from './types'
 
 const BASE = '/api'
@@ -30,16 +31,27 @@ export const api = {
     )
   },
 
-  getSequences(taxonId: number, type: SeqType = 'dna', limit = 50) {
-    return request<SequenceListResponse>(
-      `/sequences/${taxonId}?type=${type}&limit=${limit}`
-    )
+  getSequences(taxonId: number, type: SeqType = 'dna', limit = 50, gene = '') {
+    let url = `/sequences/${taxonId}?type=${type}&limit=${limit}`
+    if (gene) url += `&gene=${encodeURIComponent(gene)}`
+    return request<SequenceListResponse>(url)
   },
 
-  createCollection(name: string, seq_type: SeqType) {
+  getGeneTargets() {
+    return request<GeneTarget[]>('/collections/gene-targets')
+  },
+
+  createCollection(name: string, seq_type: SeqType, gene_target?: string) {
     return request<CollectionOut>('/collections', {
       method: 'POST',
-      body: JSON.stringify({ name, seq_type }),
+      body: JSON.stringify({ name, seq_type, gene_target: gene_target ?? null }),
+    })
+  },
+
+  autoAddSpecies(collectionId: string, speciesName: string) {
+    return request<CollectionSpeciesOut>(`/collections/${collectionId}/auto-add`, {
+      method: 'POST',
+      body: JSON.stringify({ species_name: speciesName }),
     })
   },
 
@@ -58,10 +70,13 @@ export const api = {
     return request<unknown>(`/collections/${collectionId}/species/${sequenceId}`, { method: 'DELETE' })
   },
 
-  createJob(collectionId: string) {
+  createJob(collectionId: string, outgroupAccession?: string) {
     return request<JobStatusOut>('/jobs', {
       method: 'POST',
-      body: JSON.stringify({ collection_id: collectionId }),
+      body: JSON.stringify({
+        collection_id: collectionId,
+        outgroup_accession: outgroupAccession ?? null,
+      }),
     })
   },
 
@@ -76,7 +91,7 @@ export const api = {
 
 export function connectJobProgress(
   jobId: string,
-  onMessage: (data: { pct: number; msg: string }) => void,
+  onMessage: (data: { pct: number; msg: string; status?: string }) => void,
 ): WebSocket {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const ws = new WebSocket(`${protocol}//${window.location.host}/ws/jobs/${jobId}`)

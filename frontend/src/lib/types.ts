@@ -1,6 +1,15 @@
 export type SeqType = 'dna' | 'rna' | 'protein'
 export type SeqSource = 'ncbi' | 'manual'
 export type JobStatus = 'queued' | 'aligning' | 'preview_tree' | 'full_tree' | 'conservation' | 'done' | 'failed'
+export type ResultTab = 'tree' | 'alignment' | 'conservation'
+
+export interface GeneTarget {
+  id: string
+  gene_query: string
+  label: string
+  description: string
+  seq_type: SeqType
+}
 
 export interface SpeciesSearchResult {
   taxon_id: number
@@ -39,6 +48,7 @@ export interface CollectionOut {
   id: string
   name: string
   seq_type: SeqType
+  gene_target: string | null
   species_count: number
   created_at: string
 }
@@ -52,6 +62,7 @@ export interface CollectionDetailOut {
   id: string
   name: string
   seq_type: SeqType
+  gene_target: string | null
   created_at: string
   entries: CollectionSpeciesOut[]
 }
@@ -76,12 +87,19 @@ export interface ConservedRegion {
 
 export interface ConservationData {
   position_identity: number[]
+  position_entropy?: number[]
   regions: ConservedRegion[]
   total_positions: number
   total_conserved: number
   conservation_pct: number
   threshold: number
+  method?: string
   n_sequences: number
+}
+
+export interface BootstrapEntry {
+  ufboot: number
+  sh_alrt?: number
 }
 
 export interface JobResultsOut {
@@ -91,6 +109,6 @@ export interface JobResultsOut {
   preview_tree: string | null
   tree: string | null
   tree_model: string | null
-  bootstrap_data: Record<string, unknown> | null
+  bootstrap_data: BootstrapEntry[] | Record<string, unknown> | null
   conservation: ConservationData | null
 }

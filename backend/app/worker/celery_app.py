@@ -16,4 +16,12 @@ celery_app.conf.update(
     task_acks_late=True,
 )
 
+# Cleanup automatico de jobs antigos (diario)
+celery_app.conf.beat_schedule = {
+    "cleanup-old-jobs": {
+        "task": "cleanup_old_jobs",
+        "schedule": 86400.0,  # 24h
+    },
+}
+
 celery_app.autodiscover_tasks(["app.worker"])

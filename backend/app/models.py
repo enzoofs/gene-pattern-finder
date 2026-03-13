@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, Integer, ForeignKey, Enum as SAEnum, DateTime, JSON
+from sqlalchemy import String, Text, Integer, ForeignKey, Enum as SAEnum, DateTime, JSON, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
@@ -57,6 +57,7 @@ class Collection(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255))
     seq_type: Mapped[SeqType] = mapped_column(SAEnum(SeqType), default=SeqType.dna)
+    gene_target: Mapped[str | None] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     species_links: Mapped[list["CollectionSpecies"]] = relationship(back_populates="collection", cascade="all, delete-orphan")
@@ -64,6 +65,9 @@ class Collection(Base):
 
 class CollectionSpecies(Base):
     __tablename__ = "collection_species"
+    __table_args__ = (
+        UniqueConstraint("collection_id", "sequence_id", name="uq_collection_sequence"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     collection_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("collections.id"))

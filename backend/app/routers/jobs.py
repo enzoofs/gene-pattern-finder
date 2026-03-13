@@ -28,7 +28,8 @@ async def create_job(data: JobCreate, db: AsyncSession = Depends(get_db)):
     await db.commit()
     await db.refresh(job)
 
-    run_analysis.delay(str(job.id))
+    # Passa outgroup se fornecido
+    run_analysis.delay(str(job.id), outgroup=data.outgroup_accession)
 
     return JobStatusOut.model_validate(job)
 

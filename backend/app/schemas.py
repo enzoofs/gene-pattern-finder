@@ -40,6 +40,7 @@ class SequenceListResponse(BaseModel):
 class CollectionCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     seq_type: SeqType = SeqType.dna
+    gene_target: str | None = None
 
 class CollectionSpeciesAdd(BaseModel):
     species_taxon_id: int
@@ -54,6 +55,7 @@ class CollectionOut(BaseModel):
     id: UUID
     name: str
     seq_type: SeqType
+    gene_target: str | None = None
     species_count: int
     created_at: datetime
     model_config = {"from_attributes": True}
@@ -62,12 +64,17 @@ class CollectionDetailOut(BaseModel):
     id: UUID
     name: str
     seq_type: SeqType
+    gene_target: str | None = None
     created_at: datetime
     entries: list[CollectionSpeciesOut]
+
+class AutoAddSpecies(BaseModel):
+    species_name: str = Field(..., min_length=2)
 
 # --- Jobs ---
 class JobCreate(BaseModel):
     collection_id: UUID
+    outgroup_accession: str | None = None  # accession da sequencia outgroup
 
 class JobStatusOut(BaseModel):
     id: UUID
@@ -93,5 +100,5 @@ class JobResultsOut(BaseModel):
     preview_tree: str | None
     tree: str | None
     tree_model: str | None
-    bootstrap_data: dict | None
+    bootstrap_data: dict | list | None
     conservation: dict | None
