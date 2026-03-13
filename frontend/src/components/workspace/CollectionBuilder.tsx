@@ -285,8 +285,28 @@ export function CollectionBuilder({
           onCollectionCreated(col)
         }
 
-        const entry = await api.autoAddSpecies(col.id, names[idx])
-        onEntryAdded(entry)
+        // Retry com backoff para lidar com rate limiting do NCBI
+        let lastErr: unknown
+        for (let retry = 0; retry < 3; retry++) {
+          try {
+            const entry = await api.autoAddSpecies(col.id, names[idx])
+            onEntryAdded(entry)
+            lastErr = null
+            break
+          } catch (e) {
+            lastErr = e
+            const msg = e instanceof Error ? e.message : ''
+            // Retry em 429 (rate limit) ou 502 (NCBI indisponivel)
+            const retryable = msg.includes('429') || msg.includes('Muitas buscas') || msg.includes('502') || msg.includes('500') || msg.includes('NCBI indisponivel') || msg.includes('Internal Server Error') || msg.includes('RemoteDisconnected')
+            if (retryable) {
+              await new Promise((r) => setTimeout(r, 3000 * (retry + 1)))
+            } else {
+              break
+            }
+          }
+        }
+
+        if (lastErr) throw lastErr
 
         setBatchItems((prev) => {
           const next = [...prev]
@@ -303,6 +323,11 @@ export function CollectionBuilder({
           }
           return next
         })
+      }
+
+      // Delay entre especies para respeitar rate limit do NCBI
+      if (idx < names.length - 1) {
+        await new Promise((r) => setTimeout(r, 1000))
       }
     }
 

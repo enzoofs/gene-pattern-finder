@@ -119,9 +119,13 @@ async def auto_add_species(
         db.add(species)
         await db.flush()
 
-    # 3. Busca sequencias com o gene-alvo
+    # 3. Busca sequencias com o gene-alvo (max_results=5 — so precisa da melhor)
     seq_type = SeqType(gene_info.seq_type)
-    raw_seqs = await fetch_sequences(sp_info["taxon_id"], seq_type, max_results=20, gene=gene_info.gene_query)
+    try:
+        raw_seqs = await fetch_sequences(sp_info["taxon_id"], seq_type, max_results=5, gene=gene_info.gene_query)
+    except Exception as e:
+        logger.error("NCBI fetch failed for %s: %s", sp_info['name'], e)
+        raise HTTPException(502, f"NCBI indisponivel para {sp_info['name']}: {e}")
 
     if not raw_seqs:
         raise HTTPException(404, f"Nenhuma sequencia de '{gene_info.label}' encontrada para {sp_info['name']}")

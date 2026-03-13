@@ -82,6 +82,18 @@ def _fetch_sequences_sync(taxon_id: int, seq_type: SeqType, max_results: int = 5
     else:
         term = f"{base_term} AND refseq[filter] AND 100:10000[SLEN]"
 
+    for attempt in range(MAX_RETRIES):
+        try:
+            return _do_fetch_sequences(db, base_term, term, seq_type, max_results)
+        except Exception as e:
+            logger.warning("NCBI fetch_sequences attempt %d failed: %s", attempt + 1, e)
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_DELAY * (attempt + 1))
+            else:
+                raise
+
+
+def _do_fetch_sequences(db: str, base_term: str, term: str, seq_type: SeqType, max_results: int) -> list[dict]:
     logger.info("NCBI search: db=%s term=%s max=%d", db, term, max_results)
 
     handle = Entrez.esearch(db=db, term=term, retmax=max_results, usehistory="y")
